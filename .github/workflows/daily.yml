@@ -1,0 +1,115 @@
+name: Daily video
+
+on:
+  schedule:
+    # Mon, Wed, Sat at 13:00 UTC (cron weekday: 0=Sun, 1=Mon, ..., 6=Sat).
+    - cron: '0 13 * * 1,3,6'
+  workflow_dispatch:
+    inputs:
+      series_key:
+        description: 'Force a specific series for trending-event injection (nature, insects, cosmos, ocean, animals, body, history). Leave blank for normal rotation.'
+        required: false
+        type: string
+      sub_theme:
+        description: 'Force a specific sub-topic prompt. Leave blank to pick at random from the chosen series.'
+        required: false
+        type: string
+      structure_key:
+        description: 'Force a script structure (concept_twist, investigative_case_file, expedition_narrative, layered_explainer, profile_protagonist). Leave blank for random.'
+        required: false
+        type: string
+      dry_run:
+        description: 'Build but skip YouTube upload'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: daily-video
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install system deps (ffmpeg, fonts, Chromium libs)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg \
+            fonts-noto-color-emoji \
+            fonts-liberation \
+            libnss3 libatk-bridge2.0-0 libgtk-3-0 libxkbcommon0 \
+            libasound2t64 libxshmfence1 libgbm1
+
+      - name: Install npm deps
+        run: npm ci
+
+      # Script generation runs Claude Code headless (`claude -p`). The runner has
+      # no claude binary by default, so install it and authenticate via the
+      # subscription OAuth token (generated locally with `claude setup-token`).
+      - name: Install Claude Code CLI
+        run: npm i -g @anthropic-ai/claude-code
+
+      - name: Install Remotion Chromium
+        run: npx remotion browser ensure
+
+      - name: Install Playwright Chromium (for music scraper)
+        continue-on-error: true
+        run: npx playwright install --with-deps chromium
+
+      - name: Refresh Pixabay music library
+        continue-on-error: true
+        run: npm run scrape:music
+
+      # Anti-repeat rotation state (tone / thumbnail layout / BGM) lives in work/.
+      # Runners are ephemeral, so without this the variety logic resets every run.
+      # Rolling key: unique per run (always saves a fresh snapshot in the post step),
+      # restore-keys grabs the most recent prior snapshot.
+      - name: Restore rotation state
+        uses: actions/cache@v4
+        with:
+          path: |
+            work/.last-tone
+            work/.last-thumb-layout
+            work/.last-bgm
+          key: rotation-state-${{ github.run_id }}
+          restore-keys: |
+            rotation-state-
+
+      - name: Run pipeline
+        env:
+          # Headless Claude Code auth via subscription token (no API billing).
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
+          FREESOUND_CLIENT_ID: ${{ secrets.FREESOUND_CLIENT_ID }}
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+          YT_CHANNEL_ID: ${{ secrets.YT_CHANNEL_ID }}
+          SERIES_KEY: ${{ inputs.series_key }}
+          SUB_THEME: ${{ inputs.sub_theme }}
+          STRUCTURE_KEY: ${{ inputs.structure_key }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: npm run run
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-logs-${{ github.run_id }}
+          path: |
+            work/
+            out/
+          retention-days: 3

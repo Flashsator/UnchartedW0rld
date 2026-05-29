@@ -1,0 +1,319 @@
+import { spawn } from 'node:child_process';
+import {
+  SECTION_COUNT,
+  TARGET_MINUTES,
+  TARGET_WORDS,
+  WORDS_PER_SECTION,
+  type HookPattern,
+  type Series,
+  type Structure,
+  type Voice,
+} from './config.js';
+import type { Episode, SectionOverlay } from './types.js';
+import { log } from './utils.js';
+
+const wordsLo = Math.max(20, Math.round(WORDS_PER_SECTION * 0.85));
+const wordsHi = Math.round(WORDS_PER_SECTION * 1.4);
+
+const PROMISE_TAIL_PHRASINGS: string[] = [
+  "By the end of this video, you'll know <specific reveal> — and why almost no one talks about it.",
+  "Stay with me. The part they leave out is the part that matters.",
+  `In the next ${TARGET_MINUTES} minutes, we'll show you the detail every documentary skips.`,
+  "What comes next is the part no documentary tells you.",
+  "Before this video ends, you'll see why researchers stopped publishing about <specific thing>.",
+  "Watch closely — there is a detail in this story almost everyone misses.",
+  "By the last frame, you'll understand why this was almost never reported.",
+  "Stay with me. The strangest part of this is not what you think it is.",
+  "What we're about to show you was quietly confirmed and quietly forgotten.",
+  "Keep watching — the implication at the end is the reason we made this.",
+];
+
+function pickHookPattern(structure: Structure): HookPattern {
+  const pool = structure.hookPatterns;
+  return pool[Math.floor(Math.random() * pool.length)]!;
+}
+
+function resolveSectionRoles(structure: Structure): string[] {
+  const roles = structure.sectionRoles.slice(0, SECTION_COUNT);
+  while (roles.length < SECTION_COUNT) {
+    const idx = roles.length;
+    const isLast = idx === SECTION_COUNT - 1;
+    roles.push(
+      isLast
+        ? 'CLOSING IMPLICATION. One reflective line that lingers. Not a recap, not a CTA.'
+        : 'CONTINUE. Add a layer of evidence or detail that escalates the previous section and ends on a hook into the next.',
+    );
+  }
+  return roles;
+}
+
+function buildSystemPrompt(
+  hook: HookPattern,
+  structure: Structure,
+  voice: Voice,
+  subTheme: string,
+): string {
+  const roles = resolveSectionRoles(structure);
+  const rolesBlock = roles
+    .map((role, i) => `- Section ${i}: ${role}`)
+    .join('\n');
+
+  return `You write narration scripts for a daily YouTube mini-documentary channel called "UnchartedW0rld". The channel publishes investigative discovery-style episodes about under-known corners of nature, science, and history.
+
+This episode's structural template: ${structure.label}
+${structure.structuralMantra}
+
+You always output ONE JSON object, nothing else. No markdown fences, no preface, no trailing commentary.
+
+Shape:
+{
+  "title": "string, 50-70 chars, ${structure.label} framing, no clickbait lies",
+  "hook": "string, 1 sentence, 8-14 words — the cold-open line of section 0",
+  "description": "string, 600-1000 chars, YouTube description with 3 hashtags at the end",
+  "tags": ["10-15 single-word or 2-word tags"],
+  "thumbnailConcept": "string, 8-20 words — a SINGLE concrete, photographable real-world scene for the thumbnail background that instantly reads as this topic to a stranger. Describe ONE clear subject + setting + lighting. NO abstract textures, NO extreme macro close-ups, NO collages. Good: 'a clear human ear in profile with glowing sound waves flowing into it, clean bright lighting'. Bad: 'micro-detail biology', 'abstract neural patterns'.",
+  "thumbnailWord": "string, ONE punchy uppercase word (3-8 letters) for the thumbnail caption — the single idea a viewer should feel. e.g., 'LISTEN', 'BURIED', 'WRONG'. Must NOT be a structural word like CASE/FILE/PROFILE.",
+  "sections": [
+    {
+      "heading": "string, 3-6 words, what this beat is about",
+      "narration": "string, ${wordsLo}-${wordsHi} words, ${structure.label} tone, no stage directions, no 'in this video', read aloud as natural English",
+      "visual": "string, 6-12 words describing the b-roll search query for this section",
+      "overlays": "optional array, 0-2 items, ONLY for sections 2, 3, 4, 5 — see Overlay Rules below"
+    }
+  ]
+}
+
+Overlay Rules (CRITICAL):
+- ONLY sections at index 2, 3, 4, 5 may include overlays. Sections 0, 1, 6 MUST NOT include the "overlays" field at all (omit the key entirely).
+- Each overlay is one of three kinds:
+  * { "kind": "stat", "triggerWord": "<single word from this section's narration>", "text": "<short value, e.g., '47%', '1986', '12,000'>", "subtext": "<2-5 word context, e.g., 'OF FOSSILS MISIDENTIFIED'>" }
+  * { "kind": "label", "triggerWord": "<single word from this section's narration>", "text": "<proper noun or term, e.g., 'TROGLORAPTOR'>", "subtext": "<short meta, e.g., 'genus · 2010'>" }
+  * { "kind": "compare", "triggerWord": "<single word from this section's narration>", "compareLabel": "<2-3 word title, e.g., 'FREQUENCY'>", "text": "<left label, e.g., '1850'>", "compareWith": "<right label, e.g., '2024'>", "compareLeftValue": <number 1-100>, "compareRightValue": <number 1-100> }
+- "triggerWord" MUST be an exact word that appears verbatim in that section's narration text (case-insensitive). Pick a meaningful word, not a generic one like "the" or "and".
+- Maximum 2 overlays per section. Prefer 1 overlay if there is only one strong data point.
+- Overlays should reinforce a real number, name, or comparison spoken in that section — never invent data.
+- If a section has no overlay-worthy content, omit the "overlays" field for that section.
+
+Rules:
+- Exactly ${SECTION_COUNT} sections.
+- Total narration ~${TARGET_WORDS} words across all sections combined (~${TARGET_MINUTES} minutes at 150 wpm).
+- Never break the fourth wall ("welcome back", "in today's video", "don't forget to subscribe" — handled separately).
+- Cite specific numbers, species, places, dates where they sharpen the story.
+- No emoji, no markdown inside narration.
+
+Sub-topic focus for this episode: ${subTheme}
+- Pick one specific real subject that fits this sub-topic.
+- Do NOT default to the most famous example in the field — pick something obscure, recently confirmed, half-forgotten, or quietly buried in literature.
+
+Tone for this structural template:
+- ${structure.toneInstruction}
+- Avoid hype words ("incredible", "amazing", "mind-blowing"). Strangeness stays strange.
+- Avoid happy-doc framings ("isn't nature wonderful"). Stay specific, restrained.
+
+Title style:
+- ${structure.titleStyleNote}
+- Never invent specific institutions, document numbers, or named whistleblowers. Plausible and generic only.
+- No exclamation marks. No emoji. No ALL CAPS except a single word for emphasis at most.
+
+Narrator note:
+- The narrator is ${voice.gender === 'female' ? 'a woman' : 'a man'} with ${voice.accent === 'gb' ? 'a British' : 'an American'} accent (${voice.label}). Avoid script lines that assume the opposite gender. Otherwise stay neutral first-person plural ("we") or second person ("you").
+
+Opening rule (CRITICAL — TWO-PART OPEN, THIS RUN'S HOOK STYLE: "${hook.name}"):
+- Sentence 1 of section 0 IS the hook. Style rule: ${hook.rule}
+- Example of this style: "${hook.example}"
+- The "hook" JSON field must match sentence 1 of section 0 verbatim.
+- No "Did you know", no "welcome", no title card phrasing, no setup. Go straight in.
+
+- Sentence 2 of section 0 is the PROMISE TAIL — a single sentence that tells the viewer what they will discover, framed as quietly withheld from public attention. Pick ONE phrasing from this list and adapt it to today's specific topic:
+${PROMISE_TAIL_PHRASINGS.map((p) => `  * "${p}"`).join('\n')}
+  Make the promise concrete and ominous, not generic.
+- Sentence 3 onwards in section 0 begins the actual narrative as section 0's role specifies.
+
+Per-section roles (every section, in order — follow EXACTLY):
+${rolesBlock}
+
+Pacing rules (every section):
+- Vary sentence length — short, punchy clues mixed with longer descriptive stacks.
+- Every section except the last ends on a hook into the next: an unresolved detail, a "but here is where it stops making sense", an unanswered question that the next section will pick up.
+- Do NOT do mini-twists in every section. Follow the structural template above — the reversal / discovery / deepest layer happens at the section the template says, not earlier.
+- Section 1 introduces the specific subject by name without explaining everything.`;
+}
+
+export async function generateEpisode(
+  series: Series,
+  structure: Structure,
+  voice: Voice,
+  subTheme: string,
+): Promise<{ episode: Episode; hookPattern: string }> {
+  const hook = pickHookPattern(structure);
+  const userPrompt = `Series: ${series.name}
+Theme: ${series.theme}
+Sub-topic focus: ${subTheme}
+Structural template: ${structure.label} (${structure.key})
+
+Pick ONE specific surprising topic within this sub-topic focus that fits a ${TARGET_MINUTES}-minute mini-documentary. Use the "${hook.name}" hook style for the opening. Follow the ${structure.label} per-section role specification exactly. Write the full script JSON now.`;
+
+  const fullPrompt = `${buildSystemPrompt(hook, structure, voice, subTheme)}\n\n---\n\n${userPrompt}`;
+
+  log(`Generating script via Claude Code CLI for series "${series.name}" (hook: ${hook.name}, structure: ${structure.key}, sub-theme: ${subTheme})...`);
+  const raw = await runClaudeCli(fullPrompt);
+
+  const cleaned = stripJsonFences(raw);
+  const parsed = JSON.parse(cleaned) as Episode;
+
+  validateEpisode(parsed);
+  const normalized = normalizeEpisode(parsed, series, subTheme);
+  log(
+    `Script: "${normalized.title}" — ${normalized.sections.length} sections, ${normalized.tags.length} tags, desc ${normalized.description.length} chars`,
+  );
+  return { episode: normalized, hookPattern: hook.name };
+}
+
+function toHashtag(tag: string): string {
+  const cleaned = tag.replace(/[^A-Za-z0-9]+/g, '');
+  return cleaned ? `#${cleaned}` : '';
+}
+
+const OVERLAY_ALLOWED_SECTIONS = new Set([2, 3, 4, 5]);
+
+function sanitizeOverlay(raw: unknown, narration: string): SectionOverlay | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const kind = typeof o.kind === 'string' ? o.kind : '';
+  if (kind !== 'stat' && kind !== 'label' && kind !== 'compare') return null;
+  const triggerWord = typeof o.triggerWord === 'string' ? o.triggerWord.trim() : '';
+  const text = typeof o.text === 'string' ? o.text.trim() : '';
+  if (!triggerWord || !text) return null;
+  const narrationLower = narration.toLowerCase();
+  if (!narrationLower.includes(triggerWord.toLowerCase())) return null;
+  const subtext = typeof o.subtext === 'string' ? o.subtext.trim() : undefined;
+  if (kind === 'compare') {
+    const compareWith = typeof o.compareWith === 'string' ? o.compareWith.trim() : '';
+    const compareLabel = typeof o.compareLabel === 'string' ? o.compareLabel.trim() : '';
+    const leftV = Number(o.compareLeftValue);
+    const rightV = Number(o.compareRightValue);
+    if (!compareWith || !compareLabel) return null;
+    if (!Number.isFinite(leftV) || !Number.isFinite(rightV)) return null;
+    return {
+      kind: 'compare',
+      triggerWord,
+      text,
+      compareWith,
+      compareLabel,
+      compareLeftValue: Math.max(0, Math.min(100, leftV)),
+      compareRightValue: Math.max(0, Math.min(100, rightV)),
+    };
+  }
+  return { kind, triggerWord, text, subtext };
+}
+
+function normalizeEpisode(ep: Episode, series: Series, subTheme: string): Episode {
+  const fallbackTags = [
+    series.name.replace(/\s+/g, ''),
+    subTheme.replace(/\s+/g, ''),
+    'documentary',
+    'shorts',
+    'facts',
+    'science',
+  ];
+  const rawTags = (ep.tags ?? []).map((t) => String(t).trim()).filter(Boolean);
+  const tags = rawTags.length >= 5 ? rawTags : Array.from(new Set([...rawTags, ...fallbackTags]));
+
+  const hashtags = tags
+    .slice(0, 3)
+    .map(toHashtag)
+    .filter(Boolean)
+    .join(' ');
+
+  let description = (ep.description ?? '').trim();
+  if (!description) {
+    description = `${ep.hook}\n\nA short mini-documentary from UnchartedW0rld on ${subTheme}.`;
+  }
+  if (hashtags && !/#[A-Za-z0-9]+/.test(description)) {
+    description = `${description}\n\n${hashtags}`;
+  }
+  if (description.length > 4900) description = description.slice(0, 4900);
+
+  const sections = ep.sections.map((sec, i) => {
+    if (!OVERLAY_ALLOWED_SECTIONS.has(i)) {
+      const { overlays: _unused, ...rest } = sec;
+      void _unused;
+      return rest;
+    }
+    const rawOverlays = Array.isArray(sec.overlays) ? sec.overlays : [];
+    const clean = rawOverlays
+      .map((o) => sanitizeOverlay(o, sec.narration))
+      .filter((o): o is SectionOverlay => o !== null)
+      .slice(0, 2);
+    if (clean.length === 0) {
+      const { overlays: _unused, ...rest } = sec;
+      void _unused;
+      return rest;
+    }
+    return { ...sec, overlays: clean };
+  });
+
+  const thumbnailConcept =
+    typeof ep.thumbnailConcept === 'string' && ep.thumbnailConcept.trim()
+      ? ep.thumbnailConcept.trim()
+      : undefined;
+  const thumbnailWord =
+    typeof ep.thumbnailWord === 'string' && ep.thumbnailWord.trim()
+      ? ep.thumbnailWord.trim().toUpperCase()
+      : undefined;
+
+  return { ...ep, description, tags, sections, thumbnailConcept, thumbnailWord };
+}
+
+function runClaudeCli(prompt: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const args = ['-p', '--output-format', 'text'];
+    const proc = spawn('claude', args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      shell: process.platform === 'win32',
+    });
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', (c: Buffer) => {
+      stdout += c.toString('utf-8');
+    });
+    proc.stderr.on('data', (c: Buffer) => {
+      stderr += c.toString('utf-8');
+    });
+    proc.on('error', (err) => reject(err));
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(`claude CLI exited ${code}: ${stderr.slice(-500)}`));
+        return;
+      }
+      resolve(stdout.trim());
+    });
+    proc.stdin.write(prompt);
+    proc.stdin.end();
+  });
+}
+
+function stripJsonFences(s: string): string {
+  const fence = s.match(/```(?:json)?\s*([\s\S]+?)\s*```/);
+  if (fence) return fence[1]!.trim();
+  const firstBrace = s.indexOf('{');
+  const lastBrace = s.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return s.slice(firstBrace, lastBrace + 1).trim();
+  }
+  return s.trim();
+}
+
+function validateEpisode(ep: Episode): void {
+  if (!ep.title || !ep.hook || !Array.isArray(ep.sections)) {
+    throw new Error('Episode JSON missing required fields');
+  }
+  if (ep.sections.length < SECTION_COUNT - 1 || ep.sections.length > SECTION_COUNT + 1) {
+    throw new Error(`Expected ~${SECTION_COUNT} sections, got ${ep.sections.length}`);
+  }
+  for (const [i, s] of ep.sections.entries()) {
+    if (!s.heading || !s.narration || !s.visual) {
+      throw new Error(`Section ${i} missing fields`);
+    }
+  }
+}

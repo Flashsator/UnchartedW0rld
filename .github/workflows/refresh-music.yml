@@ -1,0 +1,60 @@
+name: Refresh Pixabay music
+
+on:
+  schedule:
+    - cron: '0 6 * * 0'
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: 'Space-separated tags (leave blank for defaults)'
+        required: false
+        type: string
+      per_tag:
+        description: 'Tracks per tag'
+        required: false
+        type: string
+        default: '5'
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Scrape
+        env:
+          PIXABAY_PER_TAG: ${{ inputs.per_tag || '5' }}
+        run: |
+          if [ -n "${{ inputs.tags }}" ]; then
+            npm run scrape:music -- ${{ inputs.tags }}
+          else
+            npm run scrape:music
+          fi
+
+      - name: Commit any new tracks
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if [ -n "$(git status --porcelain assets/music_fallback)" ]; then
+            git add assets/music_fallback
+            git commit -m "chore: refresh Pixabay music library"
+            git push
+          else
+            echo "No new music to commit."
+          fi

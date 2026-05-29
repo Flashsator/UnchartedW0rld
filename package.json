@@ -1,0 +1,39 @@
+{
+  "name": "uncharted-world",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fully automated daily Discovery-style YouTube channel — Node/TS + Remotion + GitHub Actions",
+  "type": "module",
+  "scripts": {
+    "run": "tsx src/pipeline.ts",
+    "scrape:music": "tsx scripts/scrape_pixabay_music.ts",
+    "render": "remotion render remotion/index.ts MainVideo out/video.mp4",
+    "studio": "remotion studio remotion/index.ts",
+    "tsc": "tsc --noEmit",
+    "test": "node --import tsx --test test/chunker.test.ts test/cuts.test.ts test/shortsGen.test.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.99.0",
+    "@remotion/bundler": "^4.0.468",
+    "@remotion/cli": "^4.0.468",
+    "@remotion/renderer": "^4.0.468",
+    "dotenv": "^16.4.7",
+    "googleapis": "^172.0.0",
+    "msedge-tts": "^2.0.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.468",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "playwright": "^1.60.0",
+    "tsx": "^4.22.3",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
