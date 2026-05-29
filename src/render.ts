@@ -1,9 +1,19 @@
+import os from 'node:os';
 import path from 'node:path';
 import { bundle } from '@remotion/bundler';
 import { renderMedia, selectComposition } from '@remotion/renderer';
 import { ROOT } from './config.js';
 import type { RenderManifest, ShortsManifest } from './types.js';
 import { ensureDir, log } from './utils.js';
+
+// Remotion's default (concurrency: null) uses ~half the available cores. On a
+// 2-vCPU CI runner that means 1 worker — the single biggest reason a long video
+// render crawls. Use every core instead. Override with REMOTION_CONCURRENCY.
+const RENDER_CONCURRENCY = (() => {
+  const envVal = Number(process.env.REMOTION_CONCURRENCY);
+  if (Number.isInteger(envVal) && envVal > 0) return envVal;
+  return Math.max(1, os.cpus().length);
+})();
 
 export async function renderVideo(
   manifest: RenderManifest,
@@ -25,7 +35,9 @@ export async function renderVideo(
     inputProps: { manifest },
   });
 
-  log(`Rendering ${composition.durationInFrames} frames @ ${composition.fps}fps...`);
+  log(
+    `Rendering ${composition.durationInFrames} frames @ ${composition.fps}fps (concurrency=${RENDER_CONCURRENCY})...`,
+  );
 
   await renderMedia({
     serveUrl,
@@ -33,7 +45,7 @@ export async function renderVideo(
     codec: 'h264',
     outputLocation: outPath,
     inputProps: { manifest },
-    concurrency: null,
+    concurrency: RENDER_CONCURRENCY,
     chromiumOptions: { gl: 'angle' },
     imageFormat: 'jpeg',
     jpegQuality: 88,
@@ -71,7 +83,7 @@ export async function renderShorts(
     codec: 'h264',
     outputLocation: outPath,
     inputProps: { manifest },
-    concurrency: null,
+    concurrency: RENDER_CONCURRENCY,
     chromiumOptions: { gl: 'angle' },
     imageFormat: 'jpeg',
     jpegQuality: 88,

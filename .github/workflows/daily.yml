@@ -27,7 +27,11 @@ on:
 jobs:
   build-and-publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Rendering a ~10-min Remotion video with b-roll on a 2-vCPU runner is slow
+    # (the 60-min cap used to kill it mid-render). Public repo → standard-runner
+    # minutes are free, so allow ample headroom. Script-gen has its own 20-min
+    # internal cap, so a runaway here can only be a slow render, not a hang.
+    timeout-minutes: 240
     concurrency:
       group: daily-video
       cancel-in-progress: false
@@ -85,6 +89,25 @@ jobs:
           key: rotation-state-${{ github.run_id }}
           restore-keys: |
             rotation-state-
+
+      # First-run headless Claude Code blocks forever on the folder-trust /
+      # onboarding prompt (it reads /dev/tty directly, so stdout/stderr stay
+      # empty and the job just hangs until timeout). Pre-seed ~/.claude.json so
+      # the workspace is already trusted and onboarding is marked complete.
+      - name: Pre-trust workspace for headless Claude Code
+        run: |
+          node -e '
+            const fs = require("fs"), os = require("os"), path = require("path");
+            const f = path.join(os.homedir(), ".claude.json");
+            let c = {};
+            try { c = JSON.parse(fs.readFileSync(f, "utf8")); } catch {}
+            c.hasCompletedOnboarding = true;
+            c.projects = c.projects || {};
+            const cwd = process.env.GITHUB_WORKSPACE || process.cwd();
+            c.projects[cwd] = { ...(c.projects[cwd] || {}), hasTrustDialogAccepted: true, allowedTools: [] };
+            fs.writeFileSync(f, JSON.stringify(c));
+            console.log("Pre-trusted workspace:", cwd);
+          '
 
       - name: Run pipeline
         env:

@@ -265,6 +265,17 @@ function normalizeEpisode(ep: Episode, series: Series, subTheme: string): Episod
   return { ...ep, description, tags, sections, thumbnailConcept, thumbnailWord };
 }
 
+// Hard cap on the headless `claude` call. Generating a full long-form script is
+// a single large completion that, in text mode, only prints once it finishes —
+// so a too-tight cap looks identical to a hang (blank stdout, then SIGKILL).
+// A short "say PONG" prompt returns instantly in the same CI env, so the cap
+// only needs to cover real generation time. 20 min leaves ample headroom while
+// still failing fast if the CLI is genuinely stuck.
+const CLAUDE_CLI_TIMEOUT_MS = 20 * 60 * 1000;
+// Emit an elapsed-time heartbeat so a long-running generation is visibly making
+// progress (vs. a true hang) in CI logs, where text mode is otherwise silent.
+const CLAUDE_HEARTBEAT_MS = 30 * 1000;
+
 function runClaudeCli(prompt: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const args = ['-p', '--output-format', 'text'];
@@ -272,21 +283,55 @@ function runClaudeCli(prompt: string): Promise<string> {
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: process.platform === 'win32',
     });
+    const startedAt = Date.now();
+    console.log(`[claude] spawned (prompt ${prompt.length} chars); waiting for completion…`);
     let stdout = '';
     let stderr = '';
+    let settled = false;
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearInterval(heartbeat);
+      fn();
+    };
+    const heartbeat = setInterval(() => {
+      const secs = Math.round((Date.now() - startedAt) / 1000);
+      console.log(`[claude] still generating — ${secs}s elapsed, ${stdout.length} bytes received`);
+    }, CLAUDE_HEARTBEAT_MS);
+    // Kill a genuinely hung CLI and report what it managed to emit so the cause
+    // is visible in the logs instead of a blank hang.
+    const timer = setTimeout(() => {
+      proc.kill('SIGKILL');
+      finish(() =>
+        reject(
+          new Error(
+            `claude CLI timed out after ${CLAUDE_CLI_TIMEOUT_MS / 1000}s. ` +
+              `stderr: ${stderr.slice(-1000) || '(empty)'} | stdout: ${stdout.slice(-500) || '(empty)'}`,
+          ),
+        ),
+      );
+    }, CLAUDE_CLI_TIMEOUT_MS);
     proc.stdout.on('data', (c: Buffer) => {
       stdout += c.toString('utf-8');
     });
     proc.stderr.on('data', (c: Buffer) => {
-      stderr += c.toString('utf-8');
+      const s = c.toString('utf-8');
+      stderr += s;
+      // Stream live so the CI log shows progress/blockers in real time.
+      process.stderr.write(s);
     });
-    proc.on('error', (err) => reject(err));
+    proc.on('error', (err) => finish(() => reject(err)));
     proc.on('close', (code) => {
-      if (code !== 0) {
-        reject(new Error(`claude CLI exited ${code}: ${stderr.slice(-500)}`));
-        return;
-      }
-      resolve(stdout.trim());
+      finish(() => {
+        if (code !== 0) {
+          reject(new Error(`claude CLI exited ${code}: ${stderr.slice(-500)}`));
+          return;
+        }
+        const secs = Math.round((Date.now() - startedAt) / 1000);
+        console.log(`[claude] completed in ${secs}s, ${stdout.length} bytes`);
+        resolve(stdout.trim());
+      });
     });
     proc.stdin.write(prompt);
     proc.stdin.end();
