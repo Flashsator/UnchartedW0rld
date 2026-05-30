@@ -2,17 +2,31 @@
 
 Fully autonomous pipeline that produces and uploads one 10–12 minute Discovery-style mini-documentary every day. Pure Node/TypeScript, **Remotion** for video composition, runs on **GitHub Actions** (free tier). No paid render service.
 
-## Weekly series
+## Publish schedule
 
-| Day | Series | Domain |
+Three videos per week, on **Mon / Wed / Sat**. Times are anchored to **Taiwan time (UTC+8, no DST)**.
+
+| 發片日 | 台灣時間 (UTC+8) | UTC |
 |---|---|---|
-| Mon | Wild Earth Files | Nature & ecosystems |
-| Tue | Tiny Titans | Insects & micro life |
-| Wed | Cosmic Anomalies | Space & physics |
-| Thu | Abyss Unknown | Deep sea |
-| Fri | Beast Codex | Animals |
-| Sat | The Human Machine | Human body |
-| Sun | Lost & Forgotten | History mysteries |
+| 週一 | **21:00** | 13:00 |
+| 週三 | **21:00** | 13:00 |
+| 週六 | **21:00** | 13:00 |
+
+cron: `0 13 * * 1,3,6` (in `.github/workflows/daily.yml`).
+
+## Series pool
+
+Series are **not** pinned to a weekday. Each ISO week the pool below is deterministically weighted-shuffled (`seriesForToday` in `src/config.ts`); the three publish slots get three **distinct** series, so no series repeats within a week. Higher-weight series surface more often. A trending-event override (`SERIES_KEY`) can pin a specific series for a manual run.
+
+| Series | Domain | Key | Weight |
+|---|---|---|---|
+| Wild Earth Files | Nature & ecosystems | `nature` | 1.5 |
+| Beast Codex | Animals | `animals` | 1.4 |
+| Abyss Unknown | Deep sea | `ocean` | 1.3 |
+| Cosmic Anomalies | Space & physics | `cosmos` | 1.0 |
+| Tiny Titans | Insects & micro life | `insects` | 0.9 |
+| The Human Machine | Human body | `body` | 0.7 |
+| Lost & Forgotten | History mysteries | `history` | 0.7 |
 
 ## Pipeline
 
@@ -96,7 +110,7 @@ npm run studio
 
 1. Push to a **public** GitHub repo (Actions has unlimited minutes for public repos).
 2. Settings → Secrets and variables → Actions → New repository secret. Add every key from `.env.example` (no quotes).
-3. The workflow `.github/workflows/daily.yml` runs at **13:00 UTC** every day. You can also trigger it manually from the Actions tab.
+3. The workflow `.github/workflows/daily.yml` publishes on the fixed schedule above — **Mon / Wed / Sat at 21:00 Taiwan time** (`0 13 * * 1,3,6`). You can also trigger it manually from the Actions tab.
 
 The runner installs ffmpeg, Chromium, fonts, and Remotion, then runs the pipeline end-to-end (~15–25 min for a 10–12 min video on the standard 2-vCPU runner).
 
