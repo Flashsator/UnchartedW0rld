@@ -262,8 +262,9 @@ export async function fetchBgm(queries: string[], workDir: string): Promise<stri
 
 // Interlude ambience is decorative. A missing clip must never abort the whole
 // run (see fetchBgm for the same resilience pattern): try the series query, then
-// progressively broader filters, then generic ambient fallbacks. Returns null
-// only when nothing matches anywhere — the caller then skips that interlude.
+// progressively broader filters, then generic ambient fallbacks online, then the
+// committed local library when Freesound is dry or unreachable. Returns null only
+// when nothing is available anywhere — the caller then skips that interlude.
 const AMBIENT_GENERIC_FALLBACKS = [
   'nature ambient',
   'ambient atmosphere',
@@ -271,28 +272,59 @@ const AMBIENT_GENERIC_FALLBACKS = [
   'wind ambient',
 ];
 
+// Subfolders of the local library holding the most atmospheric beds. mux trims
+// every interlude to INTERLUDE_SEC, so a long music track is fine as a bed.
+const LOCAL_AMBIENT_PREFERRED = ['ambient', 'nature'];
+
+function pickLocalAmbient(): string | null {
+  if (!fs.existsSync(MUSIC_FALLBACK_DIR)) return null;
+  const all = listLocalMp3sRecursive(MUSIC_FALLBACK_DIR);
+  if (all.length === 0) return null;
+  const preferred = all.filter((file) =>
+    LOCAL_AMBIENT_PREFERRED.some((name) =>
+      path.relative(MUSIC_FALLBACK_DIR, file).toLowerCase().includes(name),
+    ),
+  );
+  const pool = preferred.length > 0 ? preferred : all;
+  return pickRandom(pool);
+}
+
 export async function fetchAmbient(query: string, workDir: string): Promise<string | null> {
-  if (!FREESOUND_API_KEY) {
-    log('Ambient: FREESOUND_API_KEY missing — skipping interlude ambience');
-    return null;
-  }
   const cacheDir = ensureDir(path.join(workDir, 'audio'));
-  const filters = ['duration:[6 TO 60]', 'duration:[3 TO 120]'];
-  const candidates = [query, ...AMBIENT_GENERIC_FALLBACKS];
 
-  for (const candidate of candidates) {
-    for (const filter of filters) {
-      const data = await searchFreesound(candidate, filter);
-      if (data.results.length === 0) continue;
-      const pick = pickRandom(data.results);
-      const dest = path.join(cacheDir, `ambient_${pick.id}.mp3`);
-      await downloadFile(pick.previews['preview-hq-mp3'], dest);
-      const tag = candidate === query ? '' : ' (generic fallback)';
-      log(`Ambient${tag}: "${pick.name}" (${pick.duration.toFixed(1)}s) — query "${candidate}"`);
-      return dest;
+  if (FREESOUND_API_KEY) {
+    const filters = ['duration:[6 TO 60]', 'duration:[3 TO 120]'];
+    const candidates = [query, ...AMBIENT_GENERIC_FALLBACKS];
+    try {
+      for (const candidate of candidates) {
+        for (const filter of filters) {
+          const data = await searchFreesound(candidate, filter);
+          if (data.results.length === 0) continue;
+          const pick = pickRandom(data.results);
+          const dest = path.join(cacheDir, `ambient_${pick.id}.mp3`);
+          await downloadFile(pick.previews['preview-hq-mp3'], dest);
+          const tag = candidate === query ? '' : ' (generic fallback)';
+          log(`Ambient${tag}: "${pick.name}" (${pick.duration.toFixed(1)}s) — query "${candidate}"`);
+          return dest;
+        }
+      }
+      log(`No Freesound ambient for "${query}" or generic fallbacks — trying local library`);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      log(`Freesound ambient lookup failed (${reason}) — trying local library`);
     }
+  } else {
+    log('Ambient: FREESOUND_API_KEY missing — trying local library');
   }
 
-  log(`No Freesound ambient for "${query}" or generic fallbacks — interlude will be skipped`);
+  const local = pickLocalAmbient();
+  if (local) {
+    const dest = path.join(cacheDir, `ambient_local_${safeFilename(path.basename(local))}`);
+    fs.copyFileSync(local, dest);
+    log(`Ambient (local library): ${path.relative(MUSIC_FALLBACK_DIR, local)}`);
+    return dest;
+  }
+
+  log(`No ambient for "${query}" (Freesound + local both empty) — interlude will be skipped`);
   return null;
 }
