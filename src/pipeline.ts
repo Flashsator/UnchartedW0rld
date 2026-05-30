@@ -90,6 +90,10 @@ async function main(): Promise<void> {
   for (let k = 0; k < interludeCount; k++) {
     log(`Step 5/8: Fetch interlude ${k + 1}/${interludeCount} (ambient audio + b-roll)`);
     const audio = await fetchAmbient(series.ambientQuery, runDir);
+    if (!audio) {
+      log(`Interlude ${k + 1}/${interludeCount} skipped — no ambient audio available`);
+      continue;
+    }
     const visuals = await fetchBroll(series.ambientQuery, INTERLUDE_SEC, runDir, used);
     interludes.push({
       afterSectionIndex: interludePositions[k]!,

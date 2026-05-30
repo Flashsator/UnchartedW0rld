@@ -260,15 +260,39 @@ export async function fetchBgm(queries: string[], workDir: string): Promise<stri
   throw new Error(`No Freesound BGM for any query [${queries.join(', ')}] or generic fallbacks`);
 }
 
-export async function fetchAmbient(query: string, workDir: string): Promise<string> {
-  const cacheDir = ensureDir(path.join(workDir, 'audio'));
-  const data = await searchFreesound(query, 'duration:[6 TO 60]');
-  if (data.results.length === 0) {
-    throw new Error(`No Freesound ambient for query "${query}"`);
+// Interlude ambience is decorative. A missing clip must never abort the whole
+// run (see fetchBgm for the same resilience pattern): try the series query, then
+// progressively broader filters, then generic ambient fallbacks. Returns null
+// only when nothing matches anywhere — the caller then skips that interlude.
+const AMBIENT_GENERIC_FALLBACKS = [
+  'nature ambient',
+  'ambient atmosphere',
+  'field recording ambient',
+  'wind ambient',
+];
+
+export async function fetchAmbient(query: string, workDir: string): Promise<string | null> {
+  if (!FREESOUND_API_KEY) {
+    log('Ambient: FREESOUND_API_KEY missing — skipping interlude ambience');
+    return null;
   }
-  const pick = pickRandom(data.results);
-  const dest = path.join(cacheDir, `ambient_${pick.id}.mp3`);
-  await downloadFile(pick.previews['preview-hq-mp3'], dest);
-  log(`Ambient: "${pick.name}" (${pick.duration.toFixed(1)}s)`);
-  return dest;
+  const cacheDir = ensureDir(path.join(workDir, 'audio'));
+  const filters = ['duration:[6 TO 60]', 'duration:[3 TO 120]'];
+  const candidates = [query, ...AMBIENT_GENERIC_FALLBACKS];
+
+  for (const candidate of candidates) {
+    for (const filter of filters) {
+      const data = await searchFreesound(candidate, filter);
+      if (data.results.length === 0) continue;
+      const pick = pickRandom(data.results);
+      const dest = path.join(cacheDir, `ambient_${pick.id}.mp3`);
+      await downloadFile(pick.previews['preview-hq-mp3'], dest);
+      const tag = candidate === query ? '' : ' (generic fallback)';
+      log(`Ambient${tag}: "${pick.name}" (${pick.duration.toFixed(1)}s) — query "${candidate}"`);
+      return dest;
+    }
+  }
+
+  log(`No Freesound ambient for "${query}" or generic fallbacks — interlude will be skipped`);
+  return null;
 }
