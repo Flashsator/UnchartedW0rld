@@ -17,7 +17,7 @@ import {
   pickVoice,
   seriesForToday,
 } from './config.js';
-import { generateEpisode } from './scriptGen.js';
+import { generateEpisode, generateShortsBlurb } from './scriptGen.js';
 import { synthesize } from './tts.js';
 import { fetchAmbient, fetchBgm, fetchBroll } from './stock.js';
 import { makeThumbnail } from './thumbnail.js';
@@ -249,10 +249,11 @@ async function runShortsPipeline(
     }
 
     const publishAt = publishAtFor(entry.daysAhead);
+    const shortsBlurb = await generateShortsBlurb(sm.shortsTitle, sm.hook, episode.description);
     const shortsEpisode: Episode = {
       title: sm.shortsTitle,
       hook: sm.hook,
-      description: `${sm.hook}\n\n${episode.description.slice(0, 600)}`,
+      description: shortsBlurb,
       tags: episode.tags,
       sections: [],
     };

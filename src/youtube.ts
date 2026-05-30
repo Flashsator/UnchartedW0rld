@@ -38,9 +38,11 @@ function toHashtag(tag: string): string | null {
 }
 
 function shortsDescription(episode: Episode, longVideoId?: string): string {
-  const raw = (episode.hook?.trim() || episode.description.trim());
-  const firstSentence = raw.split(/(?<=[.!?])\s+/)[0] ?? raw;
-  const hook = truncate(firstSentence, 200);
+  // episode.description here is the LLM-written Shorts blurb (see
+  // generateShortsBlurb / pipeline). Use it as-is; fall back to the hook's first
+  // sentence only if the blurb is somehow empty.
+  const blurb = episode.description?.trim() || episode.hook?.trim() || '';
+  const lead = truncate(blurb, 220);
   const linkLine = longVideoId ? `▶ Full video: https://youtu.be/${longVideoId}` : '';
   const hashtags = (episode.tags ?? [])
     .map(toHashtag)
@@ -49,7 +51,7 @@ function shortsDescription(episode: Episode, longVideoId?: string): string {
   const tagLine = [...hashtags, '#Shorts']
     .filter((t, i, a) => a.findIndex((x) => x.toLowerCase() === t.toLowerCase()) === i)
     .join(' ');
-  return [hook, linkLine, tagLine].filter(Boolean).join('\n\n');
+  return [lead, linkLine, tagLine].filter(Boolean).join('\n\n');
 }
 
 export async function uploadVideo(

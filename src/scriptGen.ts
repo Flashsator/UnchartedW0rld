@@ -169,6 +169,36 @@ Pick ONE specific surprising topic within this sub-topic focus that fits a ${TAR
   return { episode: normalized, hookPattern: hook.name };
 }
 
+// Writes a fresh, punchy 1–2 sentence description for a Short via the same
+// Claude CLI used for scripts. Shorts must NOT reuse the long video's full
+// description. Non-fatal: any CLI failure falls back to the section hook's first
+// sentence so the Short still uploads.
+export async function generateShortsBlurb(
+  shortTitle: string,
+  hook: string,
+  topic: string,
+): Promise<string> {
+  const fallback = hook.split(/(?<=[.!?])\s+/)[0]?.trim() || hook.trim();
+  const prompt = `Write a YouTube Shorts description for the clip below.
+Rules: one or two short sentences, under 180 characters total, punchy and curiosity-driven.
+No hashtags, no links, no emojis, no surrounding quotation marks, no preface. Output ONLY the description text.
+
+Title: ${shortTitle}
+Hook: ${hook}${topic ? `\nTopic context: ${topic.slice(0, 400)}` : ''}`;
+  try {
+    const raw = (await runClaudeCli(prompt)).trim();
+    const clean = raw
+      .replace(/^["']|["']$/g, '')
+      .replace(/#\S+/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return clean || fallback;
+  } catch (err) {
+    log(`Shorts blurb generation failed, using hook: ${(err as Error).message}`);
+    return fallback;
+  }
+}
+
 function toHashtag(tag: string): string {
   const cleaned = tag.replace(/[^A-Za-z0-9]+/g, '');
   return cleaned ? `#${cleaned}` : '';
