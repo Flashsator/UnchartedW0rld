@@ -2,8 +2,10 @@ name: Daily video
 
 on:
   schedule:
-    # Mon, Wed, Sat at 13:00 UTC (cron weekday: 0=Sun, 1=Mon, ..., 6=Sat).
-    - cron: '0 13 * * 1,3,6'
+    # Mon, Wed, Sat at 13:23 UTC (cron weekday: 0=Sun, 1=Mon, ..., 6=Sat).
+    # Minute deliberately off :00/:15/:30/:45 — GitHub queues scheduled jobs at
+    # the top of the hour, so an odd minute reduces peak-load dispatch delay.
+    - cron: '23 13 * * 1,3,6'
   workflow_dispatch:
     inputs:
       series_key:

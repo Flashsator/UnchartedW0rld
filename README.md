@@ -12,7 +12,7 @@ Three videos per week, on **Mon / Wed / Sat**. Times are anchored to **Taiwan ti
 | 週三 | **21:00** | 13:00 |
 | 週六 | **21:00** | 13:00 |
 
-cron: `0 13 * * 1,3,6` (in `.github/workflows/daily.yml`).
+cron: `23 13 * * 1,3,6` (in `.github/workflows/daily.yml`). The `:23` minute is intentional — GitHub delays scheduled jobs that fire on the hour, so an off-peak minute dispatches sooner.
 
 ## Series pool
 
@@ -110,7 +110,7 @@ npm run studio
 
 1. Push to a **public** GitHub repo (Actions has unlimited minutes for public repos).
 2. Settings → Secrets and variables → Actions → New repository secret. Add every key from `.env.example` (no quotes).
-3. The workflow `.github/workflows/daily.yml` publishes on the fixed schedule above — **Mon / Wed / Sat at 21:00 Taiwan time** (`0 13 * * 1,3,6`). You can also trigger it manually from the Actions tab.
+3. The workflow `.github/workflows/daily.yml` publishes on the fixed schedule above — **Mon / Wed / Sat at 21:00 Taiwan time** (`23 13 * * 1,3,6`). You can also trigger it manually from the Actions tab.
 
 The runner installs ffmpeg, Chromium, fonts, and Remotion, then runs the pipeline end-to-end (~15–25 min for a 10–12 min video on the standard 2-vCPU runner).
 
