@@ -28,6 +28,30 @@ function truncate(s: string, max: number): string {
   return s.length <= max ? s : `${s.slice(0, max - 1).trimEnd()}…`;
 }
 
+// Shorts get a tight, scannable description — one hook sentence, the full-video
+// link, and a handful of hashtags — NOT the long video's full description.
+const SHORTS_HASHTAG_COUNT = 6;
+
+function toHashtag(tag: string): string | null {
+  const cleaned = tag.replace(/[^a-zA-Z0-9]/g, '');
+  return cleaned ? `#${cleaned}` : null;
+}
+
+function shortsDescription(episode: Episode, longVideoId?: string): string {
+  const raw = (episode.hook?.trim() || episode.description.trim());
+  const firstSentence = raw.split(/(?<=[.!?])\s+/)[0] ?? raw;
+  const hook = truncate(firstSentence, 200);
+  const linkLine = longVideoId ? `▶ Full video: https://youtu.be/${longVideoId}` : '';
+  const hashtags = (episode.tags ?? [])
+    .map(toHashtag)
+    .filter((t): t is string => t !== null)
+    .slice(0, SHORTS_HASHTAG_COUNT);
+  const tagLine = [...hashtags, '#Shorts']
+    .filter((t, i, a) => a.findIndex((x) => x.toLowerCase() === t.toLowerCase()) === i)
+    .join(' ');
+  return [hook, linkLine, tagLine].filter(Boolean).join('\n\n');
+}
+
 export async function uploadVideo(
   videoPath: string,
   thumbnailPath: string | null,
@@ -45,9 +69,7 @@ export async function uploadVideo(
     if (!title.toLowerCase().includes('#shorts')) {
       title = `${truncate(title, 92)} #Shorts`;
     }
-    const prefix = opts.longVideoId ? `Full video: https://youtu.be/${opts.longVideoId}\n\n` : '';
-    const suffix = description.toLowerCase().includes('#shorts') ? '' : '\n\n#Shorts';
-    description = `${prefix}${description}${suffix}`;
+    description = shortsDescription(episode, opts.longVideoId);
   }
 
   log(`Uploading${opts.isShorts ? ' shorts' : ''} to YouTube: ${title}`);

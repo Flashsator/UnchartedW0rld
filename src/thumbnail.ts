@@ -160,7 +160,12 @@ function svgDiagSplit(word: string, _series: Series, v: Variant): string {
     points = `${THUMB_W},${THUMB_H} ${THUMB_W - spanX},${THUMB_H} ${THUMB_W},0`;
   }
   const fontSize = Math.round(140 * v.scale);
-  const margin = 70;
+  // Keep the headline inside YouTube's ~6% safe area. 70px was too tight: with
+  // Impact's heavy stroke (width 8 → ~4px overhang) the first letter's edge
+  // (e.g. the "L" in "LOCKED") got clipped at the frame. Bump the margin and add
+  // the stroke overhang so start/end-anchored text never touches the edge.
+  const strokeWidth = 8;
+  const margin = 110 + strokeWidth;
   const symbolX = onLeft ? margin : THUMB_W - margin;
   const anchor = onLeft ? 'start' : 'end';
   const symbolY = Math.round(THUMB_H * 0.5) + Math.round(fontSize * 0.34);
