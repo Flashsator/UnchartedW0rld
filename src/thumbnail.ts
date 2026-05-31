@@ -94,9 +94,11 @@ function pickVariant(): Variant {
   };
 }
 
-// 1) q_panel_right — solid panel covers one side; single short word inside; accent seam.
+// 1) q_panel_right — narrow solid panel hugs one side; single short word inside;
+// accent seam. Kept slim (28-34% of width) so the background photo stays the hero
+// instead of being half-covered.
 function svgPanelRight(word: string, _series: Series, v: Variant): string {
-  const panelW = Math.round(THUMB_W * (0.40 + Math.random() * 0.12));
+  const panelW = Math.round(THUMB_W * (0.28 + Math.random() * 0.06));
   const onLeft = v.flipH;
   const panelX = onLeft ? 0 : THUMB_W - panelW;
   const seamX = onLeft ? panelW - 8 : panelX;
@@ -130,8 +132,10 @@ function svgCornerDot(word: string, _series: Series, v: Variant): string {
 }
 
 // 3) q_band_word — horizontal band (top or bottom) with a single short word centered.
+// Band height held to 20-24% of the frame so it stays a caption strip rather than a
+// thick block eating a third of the photo.
 function svgBandWord(kicker: string, _series: Series, v: Variant): string {
-  const bandH = Math.round(220 + Math.random() * 60);
+  const bandH = Math.round(THUMB_H * (0.20 + Math.random() * 0.04));
   const bandY = v.flipV ? 0 : THUMB_H - bandH;
   const seamY = v.flipV ? bandH - 6 : bandY;
   const fontSize = Math.round(Math.min(bandH * 0.7, 180 * v.scale));
@@ -145,8 +149,10 @@ function svgBandWord(kicker: string, _series: Series, v: Variant): string {
 }
 
 // 4) q_diag_split — diagonal polygon anchored to one of 4 corners; short word over seam.
+// Span trimmed (40-52% of width) so the wedge reads as an accent corner, not a
+// half-frame block that buries the photo.
 function svgDiagSplit(word: string, _series: Series, v: Variant): string {
-  const spanX = Math.round(THUMB_W * (0.55 + Math.random() * 0.25));
+  const spanX = Math.round(THUMB_W * (0.40 + Math.random() * 0.12));
   const spanY = THUMB_H;
   let points: string;
   const onLeft = !v.flipH;
