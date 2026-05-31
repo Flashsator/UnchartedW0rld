@@ -95,10 +95,9 @@ function pickVariant(): Variant {
 }
 
 // 1) q_panel_right — narrow solid panel hugs one side; single short word inside;
-// accent seam. Kept slim (28-34% of width) so the background photo stays the hero
-// instead of being half-covered.
+// accent seam. Held to 15-19% of width so the background photo stays >=80% visible.
 function svgPanelRight(word: string, _series: Series, v: Variant): string {
-  const panelW = Math.round(THUMB_W * (0.28 + Math.random() * 0.06));
+  const panelW = Math.round(THUMB_W * (0.15 + Math.random() * 0.04));
   const onLeft = v.flipH;
   const panelX = onLeft ? 0 : THUMB_W - panelW;
   const seamX = onLeft ? panelW - 8 : panelX;
@@ -116,9 +115,10 @@ function svgPanelRight(word: string, _series: Series, v: Variant): string {
 </svg>`;
 }
 
-// 2) q_corner_dot — circular badge in a corner with a short word.
+// 2) q_corner_dot — circular badge in a corner with a short word. Radius capped at
+// 170-230px so the disc area stays <=18% of the frame (photo >=80% visible).
 function svgCornerDot(word: string, _series: Series, v: Variant): string {
-  const r = Math.round(220 + Math.random() * 60);
+  const r = Math.round(170 + Math.random() * 60);
   const margin = r + 60;
   const cx = v.flipH ? margin : THUMB_W - margin;
   const cy = v.flipV ? THUMB_H - margin : margin;
@@ -132,10 +132,9 @@ function svgCornerDot(word: string, _series: Series, v: Variant): string {
 }
 
 // 3) q_band_word — horizontal band (top or bottom) with a single short word centered.
-// Band height held to 20-24% of the frame so it stays a caption strip rather than a
-// thick block eating a third of the photo.
+// Band height held to 15-19% of the frame so the photo stays >=80% visible.
 function svgBandWord(kicker: string, _series: Series, v: Variant): string {
-  const bandH = Math.round(THUMB_H * (0.20 + Math.random() * 0.04));
+  const bandH = Math.round(THUMB_H * (0.15 + Math.random() * 0.04));
   const bandY = v.flipV ? 0 : THUMB_H - bandH;
   const seamY = v.flipV ? bandH - 6 : bandY;
   const fontSize = Math.round(Math.min(bandH * 0.7, 180 * v.scale));
@@ -149,10 +148,10 @@ function svgBandWord(kicker: string, _series: Series, v: Variant): string {
 }
 
 // 4) q_diag_split — diagonal polygon anchored to one of 4 corners; short word over seam.
-// Span trimmed (40-52% of width) so the wedge reads as an accent corner, not a
-// half-frame block that buries the photo.
+// The wedge is a right triangle (full height x spanX), so its area is half of
+// spanX*height. Span held to 28-38% of width => coverage 14-19% (photo >=80% visible).
 function svgDiagSplit(word: string, _series: Series, v: Variant): string {
-  const spanX = Math.round(THUMB_W * (0.40 + Math.random() * 0.12));
+  const spanX = Math.round(THUMB_W * (0.28 + Math.random() * 0.10));
   const spanY = THUMB_H;
   let points: string;
   const onLeft = !v.flipH;
@@ -184,10 +183,11 @@ function svgDiagSplit(word: string, _series: Series, v: Variant): string {
 }
 
 // 5) q_giant_overlay — caption sits in a solid band pinned to the very bottom of
-// the frame so the background image (top ~76%) stays completely unobstructed.
-// A thin gradient feathers the band into the photo above it.
+// the frame so the background image (top ~82%) stays completely unobstructed.
+// A thin gradient feathers the band into the photo above it. Solid band held to
+// 18% so the photo stays >=80% visible (the feather above is translucent).
 function svgGiantOverlay(word: string, _series: Series, v: Variant): string {
-  const bandH = Math.round(THUMB_H * 0.22);
+  const bandH = Math.round(THUMB_H * 0.18);
   const bandY = THUMB_H - bandH;
   const featherH = Math.round(bandH * 0.55);
   const featherY = bandY - featherH;
