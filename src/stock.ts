@@ -4,7 +4,6 @@ import {
   ASSETS_DIR,
   BROLL_CLIP_SEC,
   BROLL_MIN_HEIGHT,
-  FREESOUND_API_KEY,
   PEXELS_API_KEY,
   PIXABAY_API_KEY,
   WORK_DIR,
@@ -48,15 +47,6 @@ type PixabayVideo = {
 };
 
 type PixabayResp = { hits: PixabayVideo[] };
-
-type FreesoundResp = {
-  results: Array<{
-    id: number;
-    name: string;
-    duration: number;
-    previews: { 'preview-hq-mp3': string };
-  }>;
-};
 
 async function searchPexels(query: string): Promise<string[]> {
   if (!PEXELS_API_KEY) return [];
@@ -139,23 +129,6 @@ export async function fetchBroll(
   return clips;
 }
 
-async function searchFreesound(
-  query: string,
-  filter: string,
-  sort = 'downloads_desc',
-): Promise<FreesoundResp> {
-  if (!FREESOUND_API_KEY) throw new Error('FREESOUND_API_KEY missing');
-  const params = new URLSearchParams({
-    query,
-    filter,
-    sort,
-    fields: 'id,name,duration,previews',
-    page_size: '20',
-    token: FREESOUND_API_KEY,
-  });
-  return fetchJson<FreesoundResp>(`https://freesound.org/apiv2/search/text/?${params}`);
-}
-
 function listLocalMp3sRecursive(dir: string): string[] {
   if (!fs.existsSync(dir)) return [];
   const out: string[] = [];
@@ -206,6 +179,10 @@ function pickLocalBgm(queries: string[]): string | null {
   return chosen;
 }
 
+// BGM is drawn exclusively from the committed local royalty-free library
+// (assets/music_fallback, scraped from Pixabay). No online source is used:
+// on-the-fly downloads pull mixed-license audio that risks YouTube Content ID
+// claims, so the local library is the single source of truth.
 export async function fetchBgm(queries: string[], workDir: string): Promise<string> {
   const cacheDir = ensureDir(path.join(workDir, 'audio'));
 
@@ -213,64 +190,19 @@ export async function fetchBgm(queries: string[], workDir: string): Promise<stri
   if (local) {
     const dest = path.join(cacheDir, `bgm_${safeFilename(path.basename(local))}`);
     fs.copyFileSync(local, dest);
-    log(`BGM (local Pixabay library): ${path.relative(MUSIC_FALLBACK_DIR, local)}`);
+    log(`BGM (local royalty-free library): ${path.relative(MUSIC_FALLBACK_DIR, local)}`);
     return dest;
   }
 
-  if (!FREESOUND_API_KEY) {
-    throw new Error(
-      `No local BGM in ${MUSIC_FALLBACK_DIR} and FREESOUND_API_KEY missing. ` +
-        'Run scripts/scrape_pixabay_music.ts to populate the local library.',
-    );
-  }
-
-  const candidates = shuffle(queries);
-  const filters = [
-    'duration:[90 TO 600] tag:music avg_rating:[3 TO *]',
-    'duration:[60 TO 600] tag:music',
-    'duration:[60 TO 600]',
-  ];
-
-  for (const query of candidates) {
-    for (const filter of filters) {
-      const data = await searchFreesound(query, filter, 'downloads_desc');
-      if (data.results.length === 0) continue;
-      const top = data.results.slice(0, 8);
-      const pick = pickRandom(top);
-      const dest = path.join(cacheDir, `bgm_${pick.id}.mp3`);
-      await downloadFile(pick.previews['preview-hq-mp3'], dest);
-      log(`BGM: "${pick.name}" (${pick.duration.toFixed(1)}s) — query "${query}" filter="${filter}"`);
-      return dest;
-    }
-    log(`BGM query "${query}" — no Freesound hits across all filters, trying next`);
-  }
-
-  const genericFallbacks = ['ambient music', 'cinematic underscore', 'background music', 'ambient pad'];
-  for (const generic of genericFallbacks) {
-    const data = await searchFreesound(generic, 'duration:[60 TO 600]', 'downloads_desc');
-    if (data.results.length === 0) continue;
-    const top = data.results.slice(0, 8);
-    const pick = pickRandom(top);
-    const dest = path.join(cacheDir, `bgm_${pick.id}.mp3`);
-    await downloadFile(pick.previews['preview-hq-mp3'], dest);
-    log(`BGM (generic fallback): "${pick.name}" (${pick.duration.toFixed(1)}s) — query "${generic}"`);
-    return dest;
-  }
-
-  throw new Error(`No Freesound BGM for any query [${queries.join(', ')}] or generic fallbacks`);
+  throw new Error(
+    `No local BGM in ${MUSIC_FALLBACK_DIR}. ` +
+      'Run scripts/scrape_pixabay_music.ts to populate the local royalty-free library.',
+  );
 }
 
 // Interlude ambience is decorative. A missing clip must never abort the whole
-// run (see fetchBgm for the same resilience pattern): try the series query, then
-// progressively broader filters, then generic ambient fallbacks online, then the
-// committed local library when Freesound is dry or unreachable. Returns null only
-// when nothing is available anywhere — the caller then skips that interlude.
-const AMBIENT_GENERIC_FALLBACKS = [
-  'nature ambient',
-  'ambient atmosphere',
-  'field recording ambient',
-  'wind ambient',
-];
+// run, so fetchAmbient draws only from the committed local royalty-free library
+// and returns null when it is empty — the caller then skips that interlude.
 
 // Subfolders of the local library holding the most atmospheric beds. mux trims
 // every interlude to INTERLUDE_SEC, so a long music track is fine as a bed.
@@ -292,39 +224,14 @@ function pickLocalAmbient(): string | null {
 export async function fetchAmbient(query: string, workDir: string): Promise<string | null> {
   const cacheDir = ensureDir(path.join(workDir, 'audio'));
 
-  if (FREESOUND_API_KEY) {
-    const filters = ['duration:[6 TO 60]', 'duration:[3 TO 120]'];
-    const candidates = [query, ...AMBIENT_GENERIC_FALLBACKS];
-    try {
-      for (const candidate of candidates) {
-        for (const filter of filters) {
-          const data = await searchFreesound(candidate, filter);
-          if (data.results.length === 0) continue;
-          const pick = pickRandom(data.results);
-          const dest = path.join(cacheDir, `ambient_${pick.id}.mp3`);
-          await downloadFile(pick.previews['preview-hq-mp3'], dest);
-          const tag = candidate === query ? '' : ' (generic fallback)';
-          log(`Ambient${tag}: "${pick.name}" (${pick.duration.toFixed(1)}s) — query "${candidate}"`);
-          return dest;
-        }
-      }
-      log(`No Freesound ambient for "${query}" or generic fallbacks — trying local library`);
-    } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err);
-      log(`Freesound ambient lookup failed (${reason}) — trying local library`);
-    }
-  } else {
-    log('Ambient: FREESOUND_API_KEY missing — trying local library');
-  }
-
   const local = pickLocalAmbient();
   if (local) {
     const dest = path.join(cacheDir, `ambient_local_${safeFilename(path.basename(local))}`);
     fs.copyFileSync(local, dest);
-    log(`Ambient (local library): ${path.relative(MUSIC_FALLBACK_DIR, local)}`);
+    log(`Ambient (local royalty-free library): ${path.relative(MUSIC_FALLBACK_DIR, local)}`);
     return dest;
   }
 
-  log(`No ambient for "${query}" (Freesound + local both empty) — interlude will be skipped`);
+  log(`No local ambient available for "${query}" — interlude will be skipped`);
   return null;
 }

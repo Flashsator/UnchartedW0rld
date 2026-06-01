@@ -38,7 +38,7 @@ Anthropic SDK (Sonnet)      script JSON
 msedge-tts                  per-section MP3 + word/sentence boundaries
   ↓
 Pexels + Pixabay            b-roll MP4 per section
-Freesound                   BGM + ambient breather audio
+Local library (Pixabay)     BGM + ambient breather audio (royalty-free, offline)
   ↓
 Remotion (headless Chrome)  silent MP4 (intro / sections / breather / outro)
   ↓
@@ -58,7 +58,11 @@ YouTube Data API            scheduled publish (private + publishAt)
 | Anthropic | Script generation | https://console.anthropic.com |
 | Pexels | Video b-roll | https://www.pexels.com/api/ |
 | Pixabay | Video b-roll (fallback) | https://pixabay.com/api/docs/ |
-| Freesound | BGM + ambient | https://freesound.org/help/developers/ |
+
+BGM and ambient audio come from the local royalty-free library in
+`assets/music_fallback/` (scraped from Pixabay via `npm run scrape:music`).
+No online music API is used at render time — this keeps every video clear of
+YouTube Content ID claims.
 
 ### 2. YouTube OAuth
 
@@ -122,7 +126,7 @@ The runner installs ffmpeg, Chromium, fonts, and Remotion, then runs the pipelin
 src/             pipeline modules (one per stage)
   scriptGen.ts   Anthropic SDK
   tts.ts         msedge-tts
-  stock.ts       Pexels / Pixabay / Freesound
+  stock.ts       Pexels / Pixabay b-roll + local royalty-free BGM
   thumbnail.ts   Pollinations + sharp
   render.ts      Remotion bundle + renderMedia
   mux.ts         ffmpeg audio mux + SRT
@@ -142,11 +146,11 @@ scripts/
 
 | Item | Monthly |
 |---|---|
-| Pexels / Pixabay / Freesound / msedge-tts / Pollinations | $0 |
+| Pexels / Pixabay / msedge-tts / Pollinations | $0 |
 | YouTube API | $0 (well within quota) |
 | GitHub Actions on a public repo | $0 |
 | Anthropic API (~1 script/day, ~30k tokens) | ~$3–6 |
 
 ## License
 
-Personal project. Third-party media retains its original license (Pexels, Pixabay, Freesound terms apply).
+Personal project. Third-party media retains its original license (Pexels and Pixabay terms apply). Music is royalty-free Pixabay audio bundled in `assets/music_fallback/`.
