@@ -155,18 +155,28 @@ Pick ONE specific surprising topic within this sub-topic focus that fits a ${TAR
 
   const fullPrompt = `${buildSystemPrompt(hook, structure, voice, subTheme)}\n\n---\n\n${userPrompt}`;
 
-  log(`Generating script via Claude Code CLI for series "${series.name}" (hook: ${hook.name}, structure: ${structure.key}, sub-theme: ${subTheme})...`);
-  const raw = await runClaudeCli(fullPrompt);
-
-  const cleaned = stripJsonFences(raw);
-  const parsed = JSON.parse(cleaned) as Episode;
-
-  validateEpisode(parsed);
-  const normalized = normalizeEpisode(parsed, series, subTheme);
-  log(
-    `Script: "${normalized.title}" — ${normalized.sections.length} sections, ${normalized.tags.length} tags, desc ${normalized.description.length} chars`,
-  );
-  return { episode: normalized, hookPattern: hook.name };
+  // Generation is stochastic and the CLI occasionally emits a malformed or
+  // truncated payload; retry once before failing the whole pipeline.
+  let lastErr: Error | undefined;
+  for (let attempt = 1; attempt <= SCRIPT_GEN_ATTEMPTS; attempt++) {
+    log(
+      `Generating script via Claude Code CLI for series "${series.name}" (hook: ${hook.name}, structure: ${structure.key}, sub-theme: ${subTheme}, attempt ${attempt}/${SCRIPT_GEN_ATTEMPTS})...`,
+    );
+    const raw = await runClaudeCli(fullPrompt);
+    try {
+      const parsed = parseEpisodeJson(raw);
+      validateEpisode(parsed);
+      const normalized = normalizeEpisode(parsed, series, subTheme);
+      log(
+        `Script: "${normalized.title}" — ${normalized.sections.length} sections, ${normalized.tags.length} tags, desc ${normalized.description.length} chars`,
+      );
+      return { episode: normalized, hookPattern: hook.name };
+    } catch (err) {
+      lastErr = err as Error;
+      log(`Script generation attempt ${attempt}/${SCRIPT_GEN_ATTEMPTS} failed: ${lastErr.message}`);
+    }
+  }
+  throw lastErr ?? new Error('Script generation failed');
 }
 
 // Writes a fresh, punchy 1–2 sentence description for a Short via the same
@@ -305,6 +315,10 @@ const CLAUDE_CLI_TIMEOUT_MS = 20 * 60 * 1000;
 // Emit an elapsed-time heartbeat so a long-running generation is visibly making
 // progress (vs. a true hang) in CI logs, where text mode is otherwise silent.
 const CLAUDE_HEARTBEAT_MS = 30 * 1000;
+// One retry covers a single malformed/truncated generation without burning a
+// whole CI run; more than that risks doubling an already ~18-min step for little
+// additional payoff.
+const SCRIPT_GEN_ATTEMPTS = 2;
 
 function runClaudeCli(prompt: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -368,15 +382,86 @@ function runClaudeCli(prompt: string): Promise<string> {
   });
 }
 
-function stripJsonFences(s: string): string {
-  const fence = s.match(/```(?:json)?\s*([\s\S]+?)\s*```/);
-  if (fence) return fence[1]!.trim();
-  const firstBrace = s.indexOf('{');
-  const lastBrace = s.lastIndexOf('}');
-  if (firstBrace >= 0 && lastBrace > firstBrace) {
-    return s.slice(firstBrace, lastBrace + 1).trim();
+// Extracts every balanced, top-level {...} object from a string, tracking
+// string literals and escapes so braces inside JSON strings never confuse the
+// scanner. Returned in source order.
+function extractBalancedObjects(s: string): string[] {
+  const objects: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!;
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === '}' && depth > 0) {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        objects.push(s.slice(start, i + 1));
+        start = -1;
+      }
+    }
   }
-  return s.trim();
+  return objects;
+}
+
+// Builds ordered JSON candidate strings from raw CLI output: fenced blocks
+// first, then every balanced top-level object, then the whole trimmed string.
+function extractJsonCandidates(raw: string): string[] {
+  const candidates: string[] = [];
+  const fenceRe = /```(?:json)?\s*([\s\S]+?)\s*```/g;
+  let m: RegExpExecArray | null;
+  while ((m = fenceRe.exec(raw)) !== null) {
+    const inner = m[1]!.trim();
+    if (inner) candidates.push(inner);
+  }
+  candidates.push(...extractBalancedObjects(raw));
+  const trimmed = raw.trim();
+  if (trimmed) candidates.push(trimmed);
+  return [...new Set(candidates)];
+}
+
+// Parses the CLI output into an Episode, tolerating preamble prose, code
+// fences, and trailing text. Picks the largest candidate that parses and has
+// the episode shape, so a short preamble object never wins over the real
+// script. Throws with a raw-output snippet so failures stay diagnosable.
+function parseEpisodeJson(raw: string): Episode {
+  let best: Episode | undefined;
+  let bestLen = -1;
+  for (const candidate of extractJsonCandidates(raw)) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(candidate);
+    } catch {
+      continue;
+    }
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      Array.isArray((parsed as { sections?: unknown }).sections) &&
+      candidate.length > bestLen
+    ) {
+      best = parsed as Episode;
+      bestLen = candidate.length;
+    }
+  }
+  if (!best) {
+    const snippet = raw.length > 800 ? `${raw.slice(0, 800)}…` : raw;
+    throw new Error(
+      `Could not parse episode JSON from Claude CLI output (${raw.length} bytes). Raw output: ${snippet}`,
+    );
+  }
+  return best;
 }
 
 function validateEpisode(ep: Episode): void {
