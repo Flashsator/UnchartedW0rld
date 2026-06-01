@@ -3,12 +3,14 @@ import path from 'node:path';
 import {
   COLD_OPEN_SEC,
   DRY_RUN,
+  FORCE_RUN,
   INTER_SECTION_GAP_SEC,
   INTERLUDE_SEC,
   OUTRO_SUBSCRIBE_SEC,
   OUT_DIR,
   PUBLISH_OFFSET_HOURS,
   TARGET_MINUTES,
+  UPLOAD_LOCK_FILE,
   WORK_DIR,
   pickStructure,
   pickSubTheme,
@@ -34,6 +36,18 @@ function relAsset(runDir: string, abs: string): string {
   return path.relative(runDir, abs).replace(/\\/g, '/');
 }
 
+function readUploadLock(): string | null {
+  try {
+    return fs.readFileSync(UPLOAD_LOCK_FILE, 'utf8').trim();
+  } catch {
+    return null;
+  }
+}
+
+function writeUploadLock(date: string): void {
+  fs.writeFileSync(UPLOAD_LOCK_FILE, date);
+}
+
 async function main(): Promise<void> {
   const series = seriesForToday();
   const voice = pickVoice();
@@ -50,6 +64,17 @@ async function main(): Promise<void> {
   const today = new Date().toISOString().slice(0, 10);
   const runDir = ensureDir(path.join(WORK_DIR, `${today}_${series.key}`));
   ensureDir(OUT_DIR);
+
+  // Daily dedup lock: abort before any expensive work if a long-form video was
+  // already published today (e.g. a manual re-run after a failure, followed by
+  // the normal scheduled cron). DRY_RUN never uploads, so it's never blocked;
+  // FORCE_RUN=1 overrides the lock for a deliberate same-day re-publish.
+  if (!DRY_RUN && !FORCE_RUN && readUploadLock() === today) {
+    log(
+      `Upload lock: a long-form video was already published on ${today} — skipping this run. Set FORCE_RUN=1 to override.`,
+    );
+    return;
+  }
 
   log('Step 1/8: Generate script');
   const { episode, hookPattern } = await generateEpisode(series, structure, voice, subTheme);
@@ -206,6 +231,8 @@ async function main(): Promise<void> {
   const videoId = await uploadVideo(finalVideo, thumbPath, episodeForUpload, series.categoryId, {
     publishAt,
   });
+  // Long-form is live — record the lock so any later same-day run aborts above.
+  writeUploadLock(today);
   log(`Done. https://youtu.be/${videoId} (scheduled ${publishAt.toISOString()})`);
 
   await runShortsPipeline(manifest, episode, series.categoryId, runDir, today, videoId);

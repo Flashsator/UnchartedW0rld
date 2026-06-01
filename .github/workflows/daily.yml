@@ -25,6 +25,11 @@ on:
         required: false
         type: boolean
         default: false
+      force:
+        description: 'Bypass the daily upload lock (publish even if a long-form already went out today)'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build-and-publish:
@@ -88,6 +93,7 @@ jobs:
             work/.last-tone
             work/.last-thumb-layout
             work/.last-bgm
+            work/.last-upload-date
           key: rotation-state-${{ github.run_id }}
           restore-keys: |
             rotation-state-
@@ -127,6 +133,7 @@ jobs:
           SUB_THEME: ${{ inputs.sub_theme }}
           STRUCTURE_KEY: ${{ inputs.structure_key }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+          FORCE_RUN: ${{ inputs.force && '1' || '' }}
         run: npm run run
 
       - name: Upload artifacts on failure

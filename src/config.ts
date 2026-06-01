@@ -8,6 +8,11 @@ export const ROOT = path.resolve(path.dirname(__filename), '..');
 
 export const WORK_DIR = path.join(ROOT, 'work');
 export const OUT_DIR = path.join(ROOT, 'out');
+// Daily dedup lock: records the date (YYYY-MM-DD) of the last successful
+// long-form upload. Persisted across ephemeral runners via the rotation-state
+// cache so a same-day re-run (manual dispatch + scheduled cron) won't publish a
+// second long-form video. Kept at WORK_DIR root, alongside the .last-* state.
+export const UPLOAD_LOCK_FILE = path.join(WORK_DIR, '.last-upload-date');
 export const ASSETS_DIR = path.join(ROOT, 'assets');
 export const FONTS_DIR = path.join(ASSETS_DIR, 'fonts');
 
@@ -63,6 +68,9 @@ export const PUBLISH_OFFSET_HOURS = 4;
 // afternoon times, so no daylight-saving handling is needed.
 export const PUBLISH_HOUR_UTC = 19;
 export const DRY_RUN = process.env.DRY_RUN === '1';
+// Bypass the daily upload lock (e.g. the first video was deleted and you want a
+// genuine same-day re-publish). Set via the workflow_dispatch `force` input.
+export const FORCE_RUN = process.env.FORCE_RUN === '1';
 
 // UTC weekdays we publish on. 0=Sun, 1=Mon, ..., 6=Sat. Mon/Wed/Sat.
 export const PUBLISH_WEEKDAYS_UTC: readonly number[] = [1, 3, 6];
