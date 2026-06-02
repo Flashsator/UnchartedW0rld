@@ -6,7 +6,6 @@
   "type": "module",
   "scripts": {
     "run": "tsx src/pipeline.ts",
-    "scrape:music": "tsx scripts/scrape_pixabay_music.ts",
     "render": "remotion render remotion/index.ts MainVideo out/video.mp4",
     "studio": "remotion studio remotion/index.ts",
     "tsc": "tsc --noEmit",

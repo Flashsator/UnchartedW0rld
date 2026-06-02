@@ -17,6 +17,10 @@ export const ASSETS_DIR = path.join(ROOT, 'assets');
 export const FONTS_DIR = path.join(ASSETS_DIR, 'fonts');
 
 export const PEXELS_API_KEY = process.env.PEXELS_API_KEY ?? '';
+// PIXABAY_API_KEY is used for b-roll video search only. Pixabay *music* was
+// removed: distributors (e.g. We Are Era Music BV) register the tracks in
+// YouTube Content ID and claim the monetization. BGM/ambient now come solely
+// from the official YouTube Audio Library committed under assets/yt_music/.
 export const PIXABAY_API_KEY = process.env.PIXABAY_API_KEY ?? '';
 export const FREESOUND_API_KEY = process.env.FREESOUND_API_KEY ?? '';
 export const FREESOUND_CLIENT_ID = process.env.FREESOUND_CLIENT_ID ?? '';

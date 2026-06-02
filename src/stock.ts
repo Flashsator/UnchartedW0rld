@@ -20,10 +20,49 @@ import {
   shuffle,
 } from './utils.js';
 
-const MUSIC_FALLBACK_DIR = path.join(ASSETS_DIR, 'music_fallback');
+// Official YouTube Audio Library tracks (manually downloaded from Studio and
+// committed). This is the ONLY music source: it is the one library YouTube does
+// not Content-ID-claim, so it never costs the channel monetization.
+const YT_MUSIC_DIR = path.join(ASSETS_DIR, 'yt_music');
+// Tracks that have been Content-ID-claimed on a published video. One relative
+// path per line (relative to assets/, forward slashes); '#' comments allowed.
+// Listed tracks are never picked again.
+const MUSIC_BLACKLIST_FILE = path.join(ASSETS_DIR, 'music_blacklist.txt');
 // Remembers the last BGM track so back-to-back episodes don't reuse the same
 // music. Persisted like the tone/thumb anti-repeat state.
 const LAST_BGM_FILE = path.join(WORK_DIR, '.last-bgm');
+
+// Normalize a track path to an assets-relative key (forward slashes) so it
+// matches blacklist entries consistently across OSes.
+function musicRelKey(file: string): string {
+  return path.relative(ASSETS_DIR, file).split(path.sep).join('/');
+}
+
+function loadBlacklist(): Set<string> {
+  const out = new Set<string>();
+  if (!fs.existsSync(MUSIC_BLACKLIST_FILE)) return out;
+  try {
+    for (const raw of fs.readFileSync(MUSIC_BLACKLIST_FILE, 'utf-8').split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) continue;
+      out.add(line.split(path.sep).join('/'));
+    }
+  } catch (e) {
+    log(`Music blacklist read failed: ${(e as Error).message}`);
+  }
+  return out;
+}
+
+// All mp3s under a library root minus anything on the blacklist.
+function playableTracksIn(root: string): string[] {
+  const blacklist = loadBlacklist();
+  return listLocalMp3sRecursive(root).filter((file) => !blacklist.has(musicRelKey(file)));
+}
+
+// Eligible tracks: official YouTube Audio Library only, minus the blacklist.
+function eligibleTracks(): string[] {
+  return playableTracksIn(YT_MUSIC_DIR);
+}
 
 type PexelsVideo = {
   width: number;
@@ -144,15 +183,14 @@ function listLocalMp3sRecursive(dir: string): string[] {
 }
 
 function pickLocalBgm(queries: string[]): string | null {
-  if (!fs.existsSync(MUSIC_FALLBACK_DIR)) return null;
   const tokens = queries
     .flatMap((q) => q.toLowerCase().split(/\s+/))
     .filter((t) => t.length >= 4);
-  const all = listLocalMp3sRecursive(MUSIC_FALLBACK_DIR);
-  if (all.length === 0) return null;
+  const sourcePool = eligibleTracks();
+  if (sourcePool.length === 0) return null;
 
-  const scored = all.map((file) => {
-    const hay = path.relative(MUSIC_FALLBACK_DIR, file).toLowerCase();
+  const scored = sourcePool.map((file) => {
+    const hay = musicRelKey(file).toLowerCase();
     const score = tokens.reduce((acc, t) => (hay.includes(t) ? acc + 1 : acc), 0);
     return { file, score };
   });
@@ -179,10 +217,10 @@ function pickLocalBgm(queries: string[]): string | null {
   return chosen;
 }
 
-// BGM is drawn exclusively from the committed local royalty-free library
-// (assets/music_fallback, scraped from Pixabay). No online source is used:
-// on-the-fly downloads pull mixed-license audio that risks YouTube Content ID
-// claims, so the local library is the single source of truth.
+// BGM is drawn only from official YouTube Audio Library tracks committed under
+// assets/yt_music/ — the one source YouTube does not Content-ID-claim. Tracks
+// listed in assets/music_blacklist.txt (claimed on a prior video) are skipped
+// entirely. No online source is fetched at run time.
 export async function fetchBgm(queries: string[], workDir: string): Promise<string> {
   const cacheDir = ensureDir(path.join(workDir, 'audio'));
 
@@ -190,13 +228,13 @@ export async function fetchBgm(queries: string[], workDir: string): Promise<stri
   if (local) {
     const dest = path.join(cacheDir, `bgm_${safeFilename(path.basename(local))}`);
     fs.copyFileSync(local, dest);
-    log(`BGM (local royalty-free library): ${path.relative(MUSIC_FALLBACK_DIR, local)}`);
+    log(`BGM: ${musicRelKey(local)}`);
     return dest;
   }
 
   throw new Error(
-    `No local BGM in ${MUSIC_FALLBACK_DIR}. ` +
-      'Run scripts/scrape_pixabay_music.ts to populate the local royalty-free library.',
+    `No usable BGM: add official YouTube Audio Library .mp3 tracks to ` +
+      `${YT_MUSIC_DIR} and commit them (see that folder's README).`,
   );
 }
 
@@ -204,18 +242,19 @@ export async function fetchBgm(queries: string[], workDir: string): Promise<stri
 // run, so fetchAmbient draws only from the committed local royalty-free library
 // and returns null when it is empty — the caller then skips that interlude.
 
-// Subfolders of the local library holding the most atmospheric beds. mux trims
-// every interlude to INTERLUDE_SEC, so a long music track is fine as a bed.
-const LOCAL_AMBIENT_PREFERRED = ['ambient', 'nature'];
+// Folder-name keywords marking the most atmospheric beds for interludes. mux
+// trims every interlude to INTERLUDE_SEC, so a long music track is fine as a
+// bed. Matches both the YouTube Audio Library mood folders (e.g. "Ambient -Calm",
+// "Classical-Calm") and the Pixabay tag folders.
+const LOCAL_AMBIENT_PREFERRED = ['ambient', 'calm', 'nature'];
 
 function pickLocalAmbient(): string | null {
-  if (!fs.existsSync(MUSIC_FALLBACK_DIR)) return null;
-  const all = listLocalMp3sRecursive(MUSIC_FALLBACK_DIR);
+  // Same source policy as BGM (YouTube Audio Library only, Pixabay behind the
+  // escape hatch), then prefer the calmest beds within whatever is eligible.
+  const all = eligibleTracks();
   if (all.length === 0) return null;
   const preferred = all.filter((file) =>
-    LOCAL_AMBIENT_PREFERRED.some((name) =>
-      path.relative(MUSIC_FALLBACK_DIR, file).toLowerCase().includes(name),
-    ),
+    LOCAL_AMBIENT_PREFERRED.some((name) => musicRelKey(file).toLowerCase().includes(name)),
   );
   const pool = preferred.length > 0 ? preferred : all;
   return pickRandom(pool);
@@ -228,7 +267,7 @@ export async function fetchAmbient(query: string, workDir: string): Promise<stri
   if (local) {
     const dest = path.join(cacheDir, `ambient_local_${safeFilename(path.basename(local))}`);
     fs.copyFileSync(local, dest);
-    log(`Ambient (local royalty-free library): ${path.relative(MUSIC_FALLBACK_DIR, local)}`);
+    log(`Ambient: ${musicRelKey(local)}`);
     return dest;
   }
 

@@ -59,10 +59,13 @@ YouTube Data API            scheduled publish (private + publishAt)
 | Pexels | Video b-roll | https://www.pexels.com/api/ |
 | Pixabay | Video b-roll (fallback) | https://pixabay.com/api/docs/ |
 
-BGM and ambient audio come from the local royalty-free library in
-`assets/music_fallback/` (scraped from Pixabay via `npm run scrape:music`).
-No online music API is used at render time — this keeps every video clear of
-YouTube Content ID claims.
+BGM and ambient audio come solely from official **YouTube Audio Library** tracks
+committed under `assets/yt_music/` (downloaded manually from YouTube Studio).
+This is the one music source YouTube does not Content-ID-claim, so videos keep
+their monetization. Pixabay *music* was removed because distributors (e.g. We
+Are Era Music BV) register those tracks in Content ID and claim the revenue.
+Tracks listed in `assets/music_blacklist.txt` are never reused. See
+`assets/yt_music/README.md` for how to add tracks.
 
 ### 2. YouTube OAuth
 
@@ -153,4 +156,4 @@ scripts/
 
 ## License
 
-Personal project. Third-party media retains its original license (Pexels and Pixabay terms apply). Music is royalty-free Pixabay audio bundled in `assets/music_fallback/`.
+Personal project. Third-party media retains its original license (Pexels and Pixabay video terms apply). Music is from the YouTube Audio Library bundled in `assets/yt_music/`; "Attribution required" tracks must be credited in the video description.

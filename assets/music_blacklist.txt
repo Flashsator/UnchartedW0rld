@@ -1,0 +1,14 @@
+# Music blacklist — tracks that were Content-ID-claimed on a published video.
+#
+# Listed tracks are NEVER picked again for BGM or interlude ambience.
+#
+# Format: one path per line, using forward slashes, relative to assets/.
+# Blank lines and lines starting with '#' ignored.
+#
+# How to find the path when a claim appears:
+#   YouTube Studio tells you which segment/track was claimed. Match it to the
+#   file under assets/ and copy its assets-relative path here.
+#
+# Examples (delete these once you add real entries):
+#   yt_music/Cinematic-Dark/some-track.mp3
+#   music_fallback/cinematic/cinematic_123456.mp3
