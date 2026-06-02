@@ -22,6 +22,14 @@ export const PEXELS_API_KEY = process.env.PEXELS_API_KEY ?? '';
 // YouTube Content ID and claim the monetization. BGM/ambient now come solely
 // from the official YouTube Audio Library committed under assets/yt_music/.
 export const PIXABAY_API_KEY = process.env.PIXABAY_API_KEY ?? '';
+// COVERR_API_KEY adds a third free, commercial-use stock-VIDEO source for b-roll
+// (coverr.co). Same role as Pexels/Pixabay video — more providers means less
+// repeated footage across episodes. Optional: absent key just disables it.
+export const COVERR_API_KEY = process.env.COVERR_API_KEY ?? '';
+// UNSPLASH_ACCESS_KEY enables a still-photo b-roll fallback: when the video
+// providers can't fill a section, Unsplash photos are turned into slow Ken Burns
+// (pan/zoom) clips so the section never replays the same footage. Optional.
+export const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY ?? '';
 export const FREESOUND_API_KEY = process.env.FREESOUND_API_KEY ?? '';
 export const FREESOUND_CLIENT_ID = process.env.FREESOUND_CLIENT_ID ?? '';
 export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? '';

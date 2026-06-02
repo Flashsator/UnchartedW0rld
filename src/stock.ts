@@ -4,8 +4,13 @@ import {
   ASSETS_DIR,
   BROLL_CLIP_SEC,
   BROLL_MIN_HEIGHT,
+  COVERR_API_KEY,
   PEXELS_API_KEY,
   PIXABAY_API_KEY,
+  UNSPLASH_ACCESS_KEY,
+  VIDEO_FPS,
+  VIDEO_H,
+  VIDEO_W,
   WORK_DIR,
 } from './config.js';
 import type { BrollClip } from './types.js';
@@ -16,6 +21,7 @@ import {
   ffprobeDuration,
   log,
   pickRandom,
+  run,
   safeFilename,
   shuffle,
 } from './utils.js';
@@ -87,6 +93,19 @@ type PixabayVideo = {
 
 type PixabayResp = { hits: PixabayVideo[] };
 
+type CoverrVideo = {
+  max_width?: number;
+  max_height?: number;
+  aspect_ratio?: string;
+  urls?: {
+    mp4?: string;
+    mp4_download?: string;
+    mp4_preview?: string;
+  };
+};
+
+type CoverrResp = { hits: CoverrVideo[] };
+
 async function searchPexels(query: string): Promise<string[]> {
   if (!PEXELS_API_KEY) return [];
   const url = `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=15&orientation=landscape`;
@@ -128,6 +147,118 @@ async function searchPixabay(query: string): Promise<string[]> {
   }
 }
 
+// Coverr is a free, commercial-use cinematic stock-video library. We request
+// landscape clips at least BROLL_MIN_HEIGHT tall (Coverr reports max_width/
+// max_height per clip) and return their direct mp4 URLs, same contract as the
+// Pexels/Pixabay searchers.
+async function searchCoverr(query: string): Promise<string[]> {
+  if (!COVERR_API_KEY) return [];
+  const url =
+    `https://api.coverr.co/videos?query=${encodeURIComponent(query)}` +
+    `&page_size=15&urls=true&api_key=${COVERR_API_KEY}`;
+  try {
+    const data = await fetchJson<CoverrResp>(url);
+    const links: string[] = [];
+    for (const v of data.hits) {
+      const link = v.urls?.mp4 ?? v.urls?.mp4_download;
+      if (!link) continue;
+      // Skip portrait clips and anything below our minimum height when Coverr
+      // reports dimensions; accept when it doesn't (most Coverr clips are 1080p+).
+      if (v.max_height && v.max_height < BROLL_MIN_HEIGHT) continue;
+      if (v.max_width && v.max_height && v.max_height > v.max_width) continue;
+      links.push(link);
+    }
+    return links;
+  } catch (e) {
+    log(`Coverr search failed: ${(e as Error).message}`);
+    return [];
+  }
+}
+
+type UnsplashPhoto = {
+  width?: number;
+  height?: number;
+  urls?: { full?: string; regular?: string; raw?: string };
+};
+
+type UnsplashResp = { results: UnsplashPhoto[] };
+
+// Unsplash gives still photos only, so it is a *fallback* for b-roll: each photo
+// is turned into a slow Ken Burns clip (below) and used only when the video
+// providers come up short for a section. Landscape-only so it fills 16:9.
+async function searchUnsplash(query: string): Promise<string[]> {
+  if (!UNSPLASH_ACCESS_KEY) return [];
+  const url =
+    `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}` +
+    `&per_page=15&orientation=landscape&content_filter=high`;
+  try {
+    const data = await fetchJson<UnsplashResp>(url, {
+      headers: { Authorization: `Client-ID ${UNSPLASH_ACCESS_KEY}` },
+    });
+    const links: string[] = [];
+    for (const p of data.results) {
+      const link = p.urls?.full ?? p.urls?.regular ?? p.urls?.raw;
+      if (link) links.push(link);
+    }
+    return links;
+  } catch (e) {
+    log(`Unsplash search failed: ${(e as Error).message}`);
+    return [];
+  }
+}
+
+// Turns a still photo into a BROLL_CLIP_SEC Ken Burns clip (slow centered
+// zoom-in) at the project resolution/fps, so it flows through the same
+// OffthreadVideo path as real footage. The large pre-upscale keeps the zoom
+// smooth instead of stair-stepping. Returns null if the still can't be rendered.
+async function makeKenBurnsClip(
+  photoUrl: string,
+  query: string,
+  cacheDir: string,
+  idx: number,
+): Promise<BrollClip | null> {
+  const stamp = Date.now();
+  const imgPath = path.join(cacheDir, safeFilename(`kb_${query}_${idx}_${stamp}.jpg`));
+  const dest = path.join(cacheDir, safeFilename(`kb_${query}_${idx}_${stamp}.mp4`));
+  const frames = Math.round(BROLL_CLIP_SEC * VIDEO_FPS);
+  try {
+    await downloadFile(photoUrl, imgPath);
+    const vf =
+      `scale=4000:-1:flags=lanczos,` +
+      `zoompan=z='min(zoom+0.0011,1.16)':d=${frames}` +
+      `:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'` +
+      `:s=${VIDEO_W}x${VIDEO_H}:fps=${VIDEO_FPS},` +
+      `format=yuv420p`;
+    await run('ffmpeg', [
+      '-y', '-loglevel', 'error',
+      '-i', imgPath,
+      '-vf', vf,
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-pix_fmt', 'yuv420p',
+      '-r', String(VIDEO_FPS),
+      dest,
+    ]);
+    const dur = await ffprobeDuration(dest);
+    if (!Number.isFinite(dur) || dur < 2) {
+      fs.existsSync(dest) && fs.unlinkSync(dest);
+      return null;
+    }
+    return { path: dest, duration: dur, width: VIDEO_W, height: VIDEO_H };
+  } catch (e) {
+    log(`Ken Burns clip failed: ${(e as Error).message}`);
+    return null;
+  } finally {
+    if (fs.existsSync(imgPath)) {
+      try {
+        fs.unlinkSync(imgPath);
+      } catch {
+        // best-effort cleanup of the intermediate still
+      }
+    }
+  }
+}
+
 export async function fetchBroll(
   query: string,
   sectionDuration: number,
@@ -137,11 +268,12 @@ export async function fetchBroll(
   const cacheDir = ensureDir(path.join(workDir, 'broll'));
   const needed = Math.max(1, Math.ceil(sectionDuration / BROLL_CLIP_SEC));
 
-  const [pexels, pixabay] = await Promise.all([
+  const [pexels, pixabay, coverr] = await Promise.all([
     searchPexels(query),
     searchPixabay(query),
+    searchCoverr(query),
   ]);
-  const pool = shuffle([...pexels, ...pixabay]).filter((u) => !usedUrls.has(u));
+  const pool = shuffle([...pexels, ...pixabay, ...coverr]).filter((u) => !usedUrls.has(u));
 
   const clips: BrollClip[] = [];
   for (const url of pool) {
@@ -162,8 +294,24 @@ export async function fetchBroll(
     }
   }
 
+  // Still short after exhausting the video providers? Fill the remaining slots
+  // with Unsplash Ken Burns stills so the section never replays the same clip.
+  if (clips.length < needed && UNSPLASH_ACCESS_KEY) {
+    const photos = shuffle(await searchUnsplash(query)).filter((u) => !usedUrls.has(u));
+    for (const photoUrl of photos) {
+      if (clips.length >= needed) break;
+      const clip = await makeKenBurnsClip(photoUrl, query, cacheDir, clips.length);
+      if (!clip) continue;
+      usedUrls.add(photoUrl);
+      clips.push(clip);
+      log(`B-roll gap filled with Unsplash Ken Burns still for "${query}"`);
+    }
+  }
+
   if (clips.length === 0) {
-    throw new Error(`No b-roll for query "${query}" — check Pexels/Pixabay API keys`);
+    throw new Error(
+      `No b-roll for query "${query}" — check Pexels/Pixabay/Coverr/Unsplash API keys`,
+    );
   }
   return clips;
 }
