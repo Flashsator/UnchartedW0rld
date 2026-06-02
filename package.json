@@ -12,7 +12,6 @@
     "test": "node --import tsx --test test/chunker.test.ts test/cuts.test.ts test/shortsGen.test.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.99.0",
     "@remotion/bundler": "^4.0.468",
     "@remotion/cli": "^4.0.468",
     "@remotion/renderer": "^4.0.468",

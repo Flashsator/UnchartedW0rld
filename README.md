@@ -33,7 +33,7 @@ Series are **not** pinned to a weekday. Each ISO week the pool below is determin
 ## Pipeline
 
 ```
-Anthropic SDK (Sonnet)      script JSON
+Claude Code CLI (Opus)      script JSON
   ↓
 Azure Speech (neural)       per-section MP3 + word boundaries
   ↓
@@ -55,7 +55,7 @@ YouTube Data API            scheduled publish (private + publishAt)
 
 | Service | Used for | Where to get |
 |---|---|---|
-| Anthropic | Script generation | https://console.anthropic.com |
+| Claude Code | Script generation (headless `claude -p`) | Run `claude setup-token` → set `CLAUDE_CODE_OAUTH_TOKEN` (uses your Claude subscription, no API billing) |
 | Azure Speech | Narration TTS (neural, free F0 tier) | https://portal.azure.com → Speech resource |
 | Pexels | Video b-roll | https://www.pexels.com/api/ |
 | Pixabay | Video b-roll | https://pixabay.com/api/docs/ |
@@ -130,7 +130,7 @@ The runner installs ffmpeg, Chromium, fonts, and Remotion, then runs the pipelin
 
 ```
 src/             pipeline modules (one per stage)
-  scriptGen.ts   Anthropic SDK
+  scriptGen.ts   Claude Code CLI (headless claude -p, model pinned via CLAUDE_MODEL)
   tts.ts         Azure Speech neural TTS
   stock.ts       Pexels / Pixabay b-roll + local royalty-free BGM
   thumbnail.ts   Pollinations + sharp
@@ -156,7 +156,7 @@ scripts/
 | Azure Speech (neural TTS, F0 free tier ~500k chars/mo) | $0 |
 | YouTube API | $0 (well within quota) |
 | GitHub Actions on a public repo | $0 |
-| Anthropic API (~1 script/day, ~30k tokens) | ~$3–6 |
+| Claude Code (script generation) | $0 incremental — runs on your existing Claude subscription quota via `CLAUDE_CODE_OAUTH_TOKEN`, not API billing (~1 script/day) |
 
 ## License
 
