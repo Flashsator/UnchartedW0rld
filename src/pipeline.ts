@@ -25,11 +25,12 @@ import { fetchAmbient, fetchBgm, fetchBroll } from './stock.js';
 import { makeThumbnail } from './thumbnail.js';
 import { renderVideo, renderShorts } from './render.js';
 import { buildChapters, muxAudio, muxShortsAudio, writeSrt } from './mux.js';
-import { uploadVideo } from './youtube.js';
+import { buildAttribution, shortsMusicLine } from './attribution.js';
+import { listUploadedTitles, uploadVideo } from './youtube.js';
 import { extractIconEvents } from './iconExtractor.js';
 import { computeCutTimes } from './cuts.js';
 import { buildShortsManifest, planShortsForToday, publishAtFor } from './shortsGen.js';
-import type { Episode, Interlude, RenderManifest, RuntimeProfile } from './types.js';
+import type { Episode, Interlude, MusicCredit, RenderManifest, RuntimeProfile } from './types.js';
 import { ensureDir, log, safeFilename } from './utils.js';
 
 function relAsset(runDir: string, abs: string): string {
@@ -77,7 +78,14 @@ async function main(): Promise<void> {
   }
 
   log('Step 1/8: Generate script');
-  const { episode, hookPattern } = await generateEpisode(series, structure, voice, subTheme);
+  // Pull recently-published titles so the generator avoids repeating topics.
+  // The channel is the durable source of truth; this is best-effort and
+  // returns [] on any API failure.
+  const priorTitles = await listUploadedTitles();
+  if (priorTitles.length > 0) {
+    log(`Topic dedup: avoiding ${priorTitles.length} already-published titles.`);
+  }
+  const { episode, hookPattern } = await generateEpisode(series, structure, voice, subTheme, priorTitles);
   fs.writeFileSync(path.join(runDir, 'episode.json'), JSON.stringify(episode, null, 2));
 
   log('Step 2/8: Synthesize narration');
@@ -88,9 +96,12 @@ async function main(): Promise<void> {
 
   log('Step 3/8: Fetch b-roll for each section');
   const used = new Set<string>();
+  // Records which stock libraries actually contributed footage, so the
+  // description credits only the sources truly used (not just the ones enabled).
+  const footageUsed = new Set<string>();
   const broll: string[][] = [];
   for (const sec of sectionAudios) {
-    const clips = await fetchBroll(sec.visual, sec.duration, runDir, used);
+    const clips = await fetchBroll(sec.visual, sec.duration, runDir, used, footageUsed);
     broll.push(clips.map((c) => relAsset(runDir, c.path)));
   }
 
@@ -109,22 +120,26 @@ async function main(): Promise<void> {
 
   log(`Step 4/8: Fetch BGM + ${interludeCount} ambient interlude${interludeCount === 1 ? '' : 's'}`);
   const bgmQueries = [...series.musicQueries, ...structure.musicTags];
-  const bgmPath = await fetchBgm(bgmQueries, runDir);
+  const bgm = await fetchBgm(bgmQueries, runDir);
+  const bgmPath = bgm.path;
+  // BGM credit leads the attribution list; interlude tracks are appended below.
+  const musicCredits: MusicCredit[] = [bgm.credit];
 
   const interludes: Interlude[] = [];
   for (let k = 0; k < interludeCount; k++) {
     log(`Step 5/8: Fetch interlude ${k + 1}/${interludeCount} (ambient audio + b-roll)`);
-    const audio = await fetchAmbient(series.ambientQuery, runDir);
-    if (!audio) {
+    const ambient = await fetchAmbient(series.ambientQuery, runDir);
+    if (!ambient) {
       log(`Interlude ${k + 1}/${interludeCount} skipped — no ambient audio available`);
       continue;
     }
-    const visuals = await fetchBroll(series.ambientQuery, INTERLUDE_SEC, runDir, used);
+    musicCredits.push(ambient.credit);
+    const visuals = await fetchBroll(series.ambientQuery, INTERLUDE_SEC, runDir, used, footageUsed);
     interludes.push({
       afterSectionIndex: interludePositions[k]!,
       durationSec: INTERLUDE_SEC,
       visualPath: relAsset(runDir, visuals[0]!.path),
-      audioPath: audio,
+      audioPath: ambient.path,
     });
   }
 
@@ -210,16 +225,31 @@ async function main(): Promise<void> {
   fs.copyFileSync(thumbPath, thumbOut);
   log(`Thumbnail copied: ${thumbOut}`);
 
+  // Compose the final description once (chapters + auto music/footage
+  // attribution) so the exact text is verifiable on a dry run and reused
+  // verbatim on upload. Crediting every YouTube Audio Library track used
+  // satisfies the "attribution required" obligation automatically, every video.
+  const chapters = buildChapters(manifest);
+  // Only credit libraries that actually contributed footage, in a stable order.
+  const footageSources = ['Pexels', 'Pixabay', 'Coverr', 'Unsplash'].filter((s) =>
+    footageUsed.has(s),
+  );
+  const attribution = buildAttribution(musicCredits, footageSources);
+  const fullDescription = [episode.description, chapters, attribution]
+    .filter(Boolean)
+    .join('\n\n');
+  const episodeForUpload: Episode = { ...episode, description: fullDescription };
+  fs.writeFileSync(path.join(runDir, 'description.txt'), fullDescription);
+  log(`Description composed (${fullDescription.length} chars) → ${path.join(runDir, 'description.txt')}`);
+
+  const bgmCreditLine = shortsMusicLine(bgm.credit);
+
   if (DRY_RUN) {
     log(`DRY_RUN=1 — skipping YouTube upload. Final: ${finalVideo}`);
-    await runShortsPipeline(manifest, episode, series.categoryId, runDir, today, null);
+    await runShortsPipeline(manifest, episode, series.categoryId, runDir, today, null, bgmCreditLine);
     return;
   }
 
-  const chapters = buildChapters(manifest);
-  const episodeForUpload: Episode = chapters
-    ? { ...episode, description: `${episode.description}\n\n${chapters}` }
-    : episode;
   // Publish at today's US-afternoon slot (19:00 UTC) deterministically, instead
   // of drifting with render duration. If that moment has already passed (e.g. a
   // late manual dispatch), fall back to the fixed offset from now.
@@ -235,7 +265,7 @@ async function main(): Promise<void> {
   writeUploadLock(today);
   log(`Done. https://youtu.be/${videoId} (scheduled ${publishAt.toISOString()})`);
 
-  await runShortsPipeline(manifest, episode, series.categoryId, runDir, today, videoId);
+  await runShortsPipeline(manifest, episode, series.categoryId, runDir, today, videoId, bgmCreditLine);
 }
 
 async function runShortsPipeline(
@@ -245,6 +275,7 @@ async function runShortsPipeline(
   runDir: string,
   today: string,
   longVideoId: string | null,
+  musicCredit: string,
 ): Promise<void> {
   const utcDay = new Date().getUTCDay();
   const plan = planShortsForToday(utcDay);
@@ -288,6 +319,7 @@ async function runShortsPipeline(
       publishAt,
       isShorts: true,
       longVideoId: longVideoId ?? undefined,
+      musicCredit,
     });
     log(`Short ${k} uploaded: https://youtu.be/${shortId} (scheduled ${publishAt.toISOString()})`);
   }

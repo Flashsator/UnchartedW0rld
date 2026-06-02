@@ -22,6 +22,9 @@ export type UploadOptions = {
   publishAt?: Date;
   isShorts?: boolean;
   longVideoId?: string;
+  // Compact music attribution line (Shorts only — the long-form description is
+  // composed upstream in the pipeline).
+  musicCredit?: string;
 };
 
 function truncate(s: string, max: number): string {
@@ -37,13 +40,14 @@ function toHashtag(tag: string): string | null {
   return cleaned ? `#${cleaned}` : null;
 }
 
-function shortsDescription(episode: Episode, longVideoId?: string): string {
+function shortsDescription(episode: Episode, longVideoId?: string, musicCredit?: string): string {
   // episode.description here is the LLM-written Shorts blurb (see
   // generateShortsBlurb / pipeline). Use it as-is; fall back to the hook's first
   // sentence only if the blurb is somehow empty.
   const blurb = episode.description?.trim() || episode.hook?.trim() || '';
   const lead = truncate(blurb, 220);
   const linkLine = longVideoId ? `▶ Full video: https://youtu.be/${longVideoId}` : '';
+  const creditLine = musicCredit?.trim() || '';
   const hashtags = (episode.tags ?? [])
     .map(toHashtag)
     .filter((t): t is string => t !== null)
@@ -51,7 +55,40 @@ function shortsDescription(episode: Episode, longVideoId?: string): string {
   const tagLine = [...hashtags, '#Shorts']
     .filter((t, i, a) => a.findIndex((x) => x.toLowerCase() === t.toLowerCase()) === i)
     .join(' ');
-  return [lead, linkLine, tagLine].filter(Boolean).join('\n\n');
+  return [lead, linkLine, creditLine, tagLine].filter(Boolean).join('\n\n');
+}
+
+// Fetches recent uploaded video titles from the channel so the script
+// generator can avoid repeating already-published topics. The channel is the
+// durable source of truth (vs. ephemeral CI cache); scheduled/private videos
+// still appear in the owner's uploads playlist. Failures are non-fatal — we
+// just continue without topic dedup.
+export async function listUploadedTitles(maxResults = 60): Promise<string[]> {
+  try {
+    const yt = getClient();
+    const ch = await yt.channels.list({ part: ['contentDetails'], mine: true });
+    const uploads = ch.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
+    if (!uploads) return [];
+    const titles: string[] = [];
+    let pageToken: string | undefined;
+    do {
+      const res = await yt.playlistItems.list({
+        part: ['snippet'],
+        playlistId: uploads,
+        maxResults: 50,
+        pageToken,
+      });
+      for (const item of res.data.items ?? []) {
+        const title = item.snippet?.title?.replace(/\s*#shorts\b/gi, '').trim();
+        if (title) titles.push(title);
+      }
+      pageToken = res.data.nextPageToken ?? undefined;
+    } while (pageToken && titles.length < maxResults);
+    return [...new Set(titles)].slice(0, maxResults);
+  } catch (e) {
+    log(`Could not fetch uploaded titles (continuing without topic dedup): ${(e as Error).message}`);
+    return [];
+  }
 }
 
 export async function uploadVideo(
@@ -71,7 +108,7 @@ export async function uploadVideo(
     if (!title.toLowerCase().includes('#shorts')) {
       title = `${truncate(title, 92)} #Shorts`;
     }
-    description = shortsDescription(episode, opts.longVideoId);
+    description = shortsDescription(episode, opts.longVideoId, opts.musicCredit);
   }
 
   log(`Uploading${opts.isShorts ? ' shorts' : ''} to YouTube: ${title}`);

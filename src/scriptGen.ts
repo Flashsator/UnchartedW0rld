@@ -33,6 +33,44 @@ function pickHookPattern(structure: Structure): HookPattern {
   return pool[Math.floor(Math.random() * pool.length)]!;
 }
 
+// Normalizes a title to a set of meaningful word tokens for overlap scoring.
+// Drops punctuation, lowercases, and removes short/common stop-words so the
+// comparison keys on the topic nouns rather than filler.
+const TITLE_STOP_WORDS = new Set([
+  'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with', 'that',
+  'this', 'why', 'how', 'what', 'when', 'is', 'was', 'are', 'were', 'be', 'no',
+  'one', 'we', 'you', 'it', 'its', 'as', 'at', 'by', 'from', 'about',
+]);
+
+function titleTokens(title: string): Set<string> {
+  const words = title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !TITLE_STOP_WORDS.has(w));
+  return new Set(words);
+}
+
+// Jaccard similarity over the meaningful tokens of two titles (0–1).
+function titleSimilarity(a: string, b: string): number {
+  const ta = titleTokens(a);
+  const tb = titleTokens(b);
+  if (ta.size === 0 || tb.size === 0) return 0;
+  let shared = 0;
+  for (const t of ta) if (tb.has(t)) shared++;
+  const union = ta.size + tb.size - shared;
+  return union === 0 ? 0 : shared / union;
+}
+
+// A generated title collides with an already-published one when their
+// meaningful-token overlap crosses this threshold — high enough to ignore
+// incidental shared words, low enough to catch "same topic, reworded".
+const TITLE_DUPLICATE_THRESHOLD = 0.5;
+
+function findTitleCollision(title: string, avoidTitles: string[]): string | undefined {
+  return avoidTitles.find((t) => titleSimilarity(title, t) >= TITLE_DUPLICATE_THRESHOLD);
+}
+
 function resolveSectionRoles(structure: Structure): string[] {
   const roles = structure.sectionRoles.slice(0, SECTION_COUNT);
   while (roles.length < SECTION_COUNT) {
@@ -144,19 +182,31 @@ export async function generateEpisode(
   structure: Structure,
   voice: Voice,
   subTheme: string,
+  avoidTitles: string[] = [],
 ): Promise<{ episode: Episode; hookPattern: string }> {
   const hook = pickHookPattern(structure);
+  // Feed recently-published titles to the model so it steers away from topics
+  // we've already covered. Cap the list so the prompt stays bounded.
+  const avoidBlock =
+    avoidTitles.length > 0
+      ? `\n\nAlready published on this channel — pick a DIFFERENT subject, do NOT cover any of these topics again:\n${avoidTitles
+          .slice(0, 40)
+          .map((t) => `- ${t}`)
+          .join('\n')}`
+      : '';
   const userPrompt = `Series: ${series.name}
 Theme: ${series.theme}
 Sub-topic focus: ${subTheme}
 Structural template: ${structure.label} (${structure.key})
 
-Pick ONE specific surprising topic within this sub-topic focus that fits a ${TARGET_MINUTES}-minute mini-documentary. Use the "${hook.name}" hook style for the opening. Follow the ${structure.label} per-section role specification exactly. Write the full script JSON now.`;
+Pick ONE specific surprising topic within this sub-topic focus that fits a ${TARGET_MINUTES}-minute mini-documentary. Use the "${hook.name}" hook style for the opening. Follow the ${structure.label} per-section role specification exactly. Write the full script JSON now.${avoidBlock}`;
 
   const fullPrompt = `${buildSystemPrompt(hook, structure, voice, subTheme)}\n\n---\n\n${userPrompt}`;
 
   // Generation is stochastic and the CLI occasionally emits a malformed or
-  // truncated payload; retry once before failing the whole pipeline.
+  // truncated payload; retry once before failing the whole pipeline. A title
+  // that collides with an already-published topic also triggers a regenerate,
+  // but we accept the last attempt regardless so the pipeline never stalls.
   let lastErr: Error | undefined;
   for (let attempt = 1; attempt <= SCRIPT_GEN_ATTEMPTS; attempt++) {
     log(
@@ -167,6 +217,18 @@ Pick ONE specific surprising topic within this sub-topic focus that fits a ${TAR
       const parsed = parseEpisodeJson(raw);
       validateEpisode(parsed);
       const normalized = normalizeEpisode(parsed, series, subTheme);
+      const collision = findTitleCollision(normalized.title, avoidTitles);
+      if (collision && attempt < SCRIPT_GEN_ATTEMPTS) {
+        log(
+          `Topic collision: "${normalized.title}" overlaps already-published "${collision}". Regenerating (attempt ${attempt}/${SCRIPT_GEN_ATTEMPTS})...`,
+        );
+        continue;
+      }
+      if (collision) {
+        log(
+          `Topic still overlaps "${collision}" after ${attempt} attempts; accepting to avoid stalling the pipeline.`,
+        );
+      }
       log(
         `Script: "${normalized.title}" — ${normalized.sections.length} sections, ${normalized.tags.length} tags, desc ${normalized.description.length} chars`,
       );

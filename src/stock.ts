@@ -13,7 +13,7 @@ import {
   VIDEO_W,
   WORK_DIR,
 } from './config.js';
-import type { BrollClip } from './types.js';
+import type { BrollClip, MusicCredit } from './types.js';
 import {
   downloadFile,
   ensureDir,
@@ -42,6 +42,20 @@ const LAST_BGM_FILE = path.join(WORK_DIR, '.last-bgm');
 // matches blacklist entries consistently across OSes.
 function musicRelKey(file: string): string {
   return path.relative(ASSETS_DIR, file).split(path.sep).join('/');
+}
+
+// YouTube Audio Library tracks are named "Title - Artist.mp3". Derive the credit
+// from the filename so the description's attribution block needs no extra
+// metadata. The "_" the library uses in place of "/" (illegal in filenames) is
+// restored, e.g. "Doug Maxwell_Media Right Productions" -> ".../...".
+export function parseTrackCredit(file: string): MusicCredit {
+  const base = path.basename(file).replace(/\.mp3$/i, '');
+  const sep = base.lastIndexOf(' - ');
+  if (sep === -1) return { title: base.trim(), artist: '' };
+  return {
+    title: base.slice(0, sep).trim(),
+    artist: base.slice(sep + 3).trim().replace(/_/g, '/'),
+  };
 }
 
 function loadBlacklist(): Set<string> {
@@ -264,6 +278,7 @@ export async function fetchBroll(
   sectionDuration: number,
   workDir: string,
   usedUrls: Set<string>,
+  sourcesUsed?: Set<string>,
 ): Promise<BrollClip[]> {
   const cacheDir = ensureDir(path.join(workDir, 'broll'));
   const needed = Math.max(1, Math.ceil(sectionDuration / BROLL_CLIP_SEC));
@@ -273,10 +288,17 @@ export async function fetchBroll(
     searchPixabay(query),
     searchCoverr(query),
   ]);
-  const pool = shuffle([...pexels, ...pixabay, ...coverr]).filter((u) => !usedUrls.has(u));
+  // Tag each candidate with its provider so we can record exactly which
+  // libraries actually contributed footage to this video (for attribution).
+  const tagged = [
+    ...pexels.map((url) => ({ url, source: 'Pexels' })),
+    ...pixabay.map((url) => ({ url, source: 'Pixabay' })),
+    ...coverr.map((url) => ({ url, source: 'Coverr' })),
+  ];
+  const pool = shuffle(tagged).filter((c) => !usedUrls.has(c.url));
 
   const clips: BrollClip[] = [];
-  for (const url of pool) {
+  for (const { url, source } of pool) {
     if (clips.length >= needed) break;
     try {
       const name = safeFilename(`${query}_${clips.length}_${Date.now()}.mp4`);
@@ -288,6 +310,7 @@ export async function fetchBroll(
         continue;
       }
       usedUrls.add(url);
+      sourcesUsed?.add(source);
       clips.push({ path: dest, duration: dur, width: 1920, height: 1080 });
     } catch (e) {
       log(`Broll download failed: ${(e as Error).message}`);
@@ -303,6 +326,7 @@ export async function fetchBroll(
       const clip = await makeKenBurnsClip(photoUrl, query, cacheDir, clips.length);
       if (!clip) continue;
       usedUrls.add(photoUrl);
+      sourcesUsed?.add('Unsplash');
       clips.push(clip);
       log(`B-roll gap filled with Unsplash Ken Burns still for "${query}"`);
     }
@@ -369,7 +393,10 @@ function pickLocalBgm(queries: string[]): string | null {
 // assets/yt_music/ — the one source YouTube does not Content-ID-claim. Tracks
 // listed in assets/music_blacklist.txt (claimed on a prior video) are skipped
 // entirely. No online source is fetched at run time.
-export async function fetchBgm(queries: string[], workDir: string): Promise<string> {
+export async function fetchBgm(
+  queries: string[],
+  workDir: string,
+): Promise<{ path: string; credit: MusicCredit }> {
   const cacheDir = ensureDir(path.join(workDir, 'audio'));
 
   const local = pickLocalBgm(queries);
@@ -377,7 +404,7 @@ export async function fetchBgm(queries: string[], workDir: string): Promise<stri
     const dest = path.join(cacheDir, `bgm_${safeFilename(path.basename(local))}`);
     fs.copyFileSync(local, dest);
     log(`BGM: ${musicRelKey(local)}`);
-    return dest;
+    return { path: dest, credit: parseTrackCredit(local) };
   }
 
   throw new Error(
@@ -408,7 +435,10 @@ function pickLocalAmbient(): string | null {
   return pickRandom(pool);
 }
 
-export async function fetchAmbient(query: string, workDir: string): Promise<string | null> {
+export async function fetchAmbient(
+  query: string,
+  workDir: string,
+): Promise<{ path: string; credit: MusicCredit } | null> {
   const cacheDir = ensureDir(path.join(workDir, 'audio'));
 
   const local = pickLocalAmbient();
@@ -416,7 +446,7 @@ export async function fetchAmbient(query: string, workDir: string): Promise<stri
     const dest = path.join(cacheDir, `ambient_local_${safeFilename(path.basename(local))}`);
     fs.copyFileSync(local, dest);
     log(`Ambient: ${musicRelKey(local)}`);
-    return dest;
+    return { path: dest, credit: parseTrackCredit(local) };
   }
 
   log(`No local ambient available for "${query}" — interlude will be skipped`);

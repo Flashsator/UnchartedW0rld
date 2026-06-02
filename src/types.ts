@@ -36,6 +36,13 @@ export type WordTiming = {
   text: string;
 };
 
+// A music track credit derived from its "Title - Artist.mp3" filename, used to
+// auto-build the attribution block in the video description.
+export type MusicCredit = {
+  title: string;
+  artist: string;
+};
+
 export type SectionAudio = {
   index: number;
   narration: string;
