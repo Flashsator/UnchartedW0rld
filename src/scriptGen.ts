@@ -382,9 +382,13 @@ const CLAUDE_HEARTBEAT_MS = 30 * 1000;
 // additional payoff.
 const SCRIPT_GEN_ATTEMPTS = 2;
 
+// Pin the headless CLI to Sonnet so generation cost/quota is predictable and
+// independent of whatever the account's default model happens to be.
+const CLAUDE_MODEL = 'claude-sonnet-4-6';
+
 function runClaudeCli(prompt: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const args = ['-p', '--output-format', 'text'];
+    const args = ['-p', '--output-format', 'text', '--model', CLAUDE_MODEL];
     const proc = spawn('claude', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: process.platform === 'win32',
