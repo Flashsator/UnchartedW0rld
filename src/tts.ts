@@ -1,102 +1,110 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
-import { TTS_RATE, TTS_VOICE_FALLBACK } from './config.js';
+import * as sdk from 'microsoft-cognitiveservices-speech-sdk';
+import {
+  AZURE_SPEECH_KEY,
+  AZURE_SPEECH_REGION,
+  TTS_RATE,
+  TTS_VOICE_FALLBACK,
+} from './config.js';
 import type { Episode, SectionAudio, WordTiming } from './types.js';
 import { ensureDir, ffprobeDuration, log } from './utils.js';
 
-type RawBoundary = {
-  Metadata?: Array<{
-    Type?: string;
-    Data?: { Offset?: number; Duration?: number; text?: { Text?: string } };
-  }>;
-};
-
 export type Prosody = { rate?: string; pitch?: string };
 
+// Escape the five XML special characters so narration text is safe inside SSML.
+function escapeXml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+// Derive the SSML locale from the voice id, e.g. "en-GB-RyanNeural" -> "en-GB".
+function localeFromVoice(voice: string): string {
+  const m = voice.match(/^([a-z]{2}-[A-Z]{2})/);
+  return m?.[1] ?? 'en-US';
+}
+
+function buildSsml(text: string, voice: string, prosody?: Prosody): string {
+  const rate = prosody?.rate ?? TTS_RATE;
+  const pitch = prosody?.pitch;
+  const inner = escapeXml(text);
+  const prosodyOpen = `<prosody rate="${rate}"${pitch ? ` pitch="${pitch}"` : ''}>`;
+  return (
+    `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${localeFromVoice(voice)}">` +
+    `<voice name="${voice}">${prosodyOpen}${inner}</prosody></voice>` +
+    `</speak>`
+  );
+}
+
+// Synthesizes one narration block to an MP3 via the licensed Azure Speech API.
+// Azure's wordBoundary event uses the same 100ns-tick offset convention as the
+// old msedge metadata, so the WordTiming contract (and everything downstream:
+// subtitles, cut times, overlays) is unchanged.
 async function synthOne(
   text: string,
   outPath: string,
   voice: string,
   prosody?: Prosody,
 ): Promise<{ audioPath: string; words: WordTiming[] }> {
-  const tts = new MsEdgeTTS();
-  await tts.setMetadata(voice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3, {
-    wordBoundaryEnabled: true,
-    sentenceBoundaryEnabled: true,
-  });
-
-  const streamOpts: { rate: string; pitch?: string } = {
-    rate: prosody?.rate ?? TTS_RATE,
-  };
-  if (prosody?.pitch) streamOpts.pitch = prosody.pitch;
-  const { audioStream, metadataStream } = await tts.toStream(text, streamOpts);
-
-  const sentenceSpans: Array<{ start: number; end: number; text: string }> = [];
-  const wordTimings: WordTiming[] = [];
-
-  metadataStream?.on('data', (chunk: Buffer | string) => {
-    try {
-      const payload: RawBoundary = JSON.parse(
-        typeof chunk === 'string' ? chunk : chunk.toString('utf-8'),
-      );
-      const meta = payload.Metadata ?? [];
-      for (const m of meta) {
-        const type = m.Type;
-        const data = m.Data;
-        if (!type || !data) continue;
-        const start = (data.Offset ?? 0) / 1e7;
-        const dur = (data.Duration ?? 0) / 1e7;
-        const t = data.text?.Text ?? '';
-        if (type === 'WordBoundary') {
-          wordTimings.push({ start, end: start + dur, text: t });
-        } else if (type === 'SentenceBoundary') {
-          sentenceSpans.push({ start, end: start + dur, text: t });
-        }
-      }
-    } catch {
-      /* ignore non-JSON frames */
-    }
-  });
+  if (!AZURE_SPEECH_KEY || !AZURE_SPEECH_REGION) {
+    throw new Error('AZURE_SPEECH_KEY and AZURE_SPEECH_REGION must be set for TTS');
+  }
 
   ensureDir(path.dirname(outPath));
-  const fileStream = fs.createWriteStream(outPath);
 
-  await new Promise<void>((resolve, reject) => {
-    audioStream.pipe(fileStream);
-    audioStream.on('end', () => resolve());
-    audioStream.on('error', reject);
-    fileStream.on('error', reject);
-  });
+  const speechConfig = sdk.SpeechConfig.fromSubscription(AZURE_SPEECH_KEY, AZURE_SPEECH_REGION);
+  speechConfig.speechSynthesisOutputFormat =
+    sdk.SpeechSynthesisOutputFormat.Audio24Khz48KBitRateMonoMp3;
+
+  const audioConfig = sdk.AudioConfig.fromAudioFileOutput(outPath);
+  const synthesizer = new sdk.SpeechSynthesizer(speechConfig, audioConfig);
+
+  const wordTimings: WordTiming[] = [];
+  synthesizer.wordBoundary = (_s, e) => {
+    // Only spoken words drive timings; punctuation boundaries are skipped so the
+    // token stream lines up with the narration's words.
+    if (e.boundaryType === sdk.SpeechSynthesisBoundaryType.Punctuation) return;
+    const start = e.audioOffset / 1e7;
+    const dur = (e.duration ?? 0) / 1e7;
+    wordTimings.push({ start, end: start + dur, text: e.text });
+  };
+
+  const ssml = buildSsml(text, voice, prosody);
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      synthesizer.speakSsmlAsync(
+        ssml,
+        (result) => {
+          if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
+            resolve();
+          } else {
+            reject(
+              new Error(
+                `Azure TTS did not complete (reason ${result.reason}): ${result.errorDetails ?? 'unknown'}`,
+              ),
+            );
+          }
+        },
+        (err) => reject(new Error(String(err))),
+      );
+    });
+  } finally {
+    synthesizer.close();
+  }
 
   const stat = fs.statSync(outPath);
   if (stat.size < 1024) {
     throw new Error(`TTS produced empty/tiny mp3 (${stat.size} bytes) — voice may be unavailable`);
   }
 
-  if (wordTimings.length > 0) {
-    return { audioPath: outPath, words: wordTimings };
-  }
-
-  // Sentence-boundary fallback
-  if (sentenceSpans.length > 0) {
-    const expanded: WordTiming[] = [];
-    for (const span of sentenceSpans) {
-      const tokens = span.text.split(/\s+/).filter(Boolean);
-      if (tokens.length === 0) continue;
-      const per = (span.end - span.start) / tokens.length;
-      tokens.forEach((tok, j) => {
-        expanded.push({
-          start: span.start + j * per,
-          end: span.start + (j + 1) * per,
-          text: tok,
-        });
-      });
-    }
-    return { audioPath: outPath, words: expanded };
-  }
-
-  return { audioPath: outPath, words: [] };
+  // wordTimings may be empty if the service returned no boundaries; synthesize()
+  // then falls back to uniform timings derived from the audio duration.
+  return { audioPath: outPath, words: wordTimings };
 }
 
 export async function synthesize(

@@ -34,6 +34,13 @@ export const FREESOUND_API_KEY = process.env.FREESOUND_API_KEY ?? '';
 export const FREESOUND_CLIENT_ID = process.env.FREESOUND_CLIENT_ID ?? '';
 export const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ?? '';
 
+// Azure Speech (neural TTS). These are the SAME neural voices msedge-tts tapped
+// unofficially (en-US-AndrewNeural, etc.), but via the licensed API that allows
+// commercial use. F0 (free) tier covers ~500k chars/month — well above this
+// channel's usage. Get both from the Azure Portal Speech resource.
+export const AZURE_SPEECH_KEY = process.env.AZURE_SPEECH_KEY ?? '';
+export const AZURE_SPEECH_REGION = process.env.AZURE_SPEECH_REGION ?? '';
+
 export const YT_CLIENT_ID = process.env.YT_CLIENT_ID ?? '';
 export const YT_CLIENT_SECRET = process.env.YT_CLIENT_SECRET ?? '';
 export const YT_REFRESH_TOKEN = process.env.YT_REFRESH_TOKEN ?? '';

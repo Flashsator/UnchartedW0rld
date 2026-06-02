@@ -35,7 +35,7 @@ Series are **not** pinned to a weekday. Each ISO week the pool below is determin
 ```
 Anthropic SDK (Sonnet)      script JSON
   ↓
-msedge-tts                  per-section MP3 + word/sentence boundaries
+Azure Speech (neural)       per-section MP3 + word boundaries
   ↓
 Pexels + Pixabay            b-roll MP4 per section
 Local library (Pixabay)     BGM + ambient breather audio (royalty-free, offline)
@@ -56,8 +56,11 @@ YouTube Data API            scheduled publish (private + publishAt)
 | Service | Used for | Where to get |
 |---|---|---|
 | Anthropic | Script generation | https://console.anthropic.com |
+| Azure Speech | Narration TTS (neural, free F0 tier) | https://portal.azure.com → Speech resource |
 | Pexels | Video b-roll | https://www.pexels.com/api/ |
-| Pixabay | Video b-roll (fallback) | https://pixabay.com/api/docs/ |
+| Pixabay | Video b-roll | https://pixabay.com/api/docs/ |
+| Coverr | Video b-roll (optional) | https://coverr.co/ |
+| Unsplash | Still-photo b-roll fallback (optional) | https://unsplash.com/developers |
 
 BGM and ambient audio come solely from official **YouTube Audio Library** tracks
 committed under `assets/yt_music/` (downloaded manually from YouTube Studio).
@@ -128,7 +131,7 @@ The runner installs ffmpeg, Chromium, fonts, and Remotion, then runs the pipelin
 ```
 src/             pipeline modules (one per stage)
   scriptGen.ts   Anthropic SDK
-  tts.ts         msedge-tts
+  tts.ts         Azure Speech neural TTS
   stock.ts       Pexels / Pixabay b-roll + local royalty-free BGM
   thumbnail.ts   Pollinations + sharp
   render.ts      Remotion bundle + renderMedia
@@ -149,7 +152,8 @@ scripts/
 
 | Item | Monthly |
 |---|---|
-| Pexels / Pixabay / msedge-tts / Pollinations | $0 |
+| Pexels / Pixabay / Coverr / Unsplash / Pollinations | $0 |
+| Azure Speech (neural TTS, F0 free tier ~500k chars/mo) | $0 |
 | YouTube API | $0 (well within quota) |
 | GitHub Actions on a public repo | $0 |
 | Anthropic API (~1 script/day, ~30k tokens) | ~$3–6 |

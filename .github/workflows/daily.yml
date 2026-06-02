@@ -121,8 +121,14 @@ jobs:
         env:
           # Headless Claude Code auth via subscription token (no API billing).
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Required: narration TTS. Without these the run fails at the TTS stage.
+          AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY }}
+          AZURE_SPEECH_REGION: ${{ secrets.AZURE_SPEECH_REGION }}
           PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          # Optional extra b-roll sources (disabled gracefully if unset).
+          COVERR_API_KEY: ${{ secrets.COVERR_API_KEY }}
+          UNSPLASH_ACCESS_KEY: ${{ secrets.UNSPLASH_ACCESS_KEY }}
           FREESOUND_API_KEY: ${{ secrets.FREESOUND_API_KEY }}
           FREESOUND_CLIENT_ID: ${{ secrets.FREESOUND_CLIENT_ID }}
           YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
