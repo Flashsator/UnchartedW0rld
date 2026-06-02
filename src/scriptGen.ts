@@ -109,13 +109,14 @@ Shape:
   "hook": "string, 1 sentence, 8-14 words — the cold-open line of section 0",
   "description": "string, 600-1000 chars, YouTube description with 3 hashtags at the end",
   "tags": ["10-15 single-word or 2-word tags"],
+  "subject": "string, 1-3 words — the ONE concrete, photographable thing this whole episode is about (a creature, object, place, or person), e.g. 'cave spider', 'glass frog', 'Roman aqueduct'. This is the visual anchor for EVERY b-roll query below. Must be a real, searchable noun, not an abstract idea.",
   "thumbnailConcept": "string, 8-20 words — a SINGLE concrete, photographable real-world scene for the thumbnail background that instantly reads as this topic to a stranger. Describe ONE clear subject + setting + lighting. NO abstract textures, NO extreme macro close-ups, NO collages. Good: 'a clear human ear in profile with glowing sound waves flowing into it, clean bright lighting'. Bad: 'micro-detail biology', 'abstract neural patterns'.",
   "thumbnailWord": "string, ONE punchy uppercase word (3-8 letters) for the thumbnail caption — the single idea a viewer should feel. e.g., 'LISTEN', 'BURIED', 'WRONG'. Must NOT be a structural word like CASE/FILE/PROFILE.",
   "sections": [
     {
       "heading": "string, 3-6 words, what this beat is about",
       "narration": "string, ${wordsLo}-${wordsHi} words, ${structure.label} tone, no stage directions, no 'in this video', read aloud as natural English",
-      "visual": "string, 6-12 words describing the b-roll search query for this section",
+      "visual": "string, 6-12 words for this section's b-roll stock-footage search. MUST start with the episode \"subject\" so the footage shows it, then add this beat's scene/action/setting. e.g. subject 'cave spider' -> 'cave spider crawling on wet rock in dark cave'. NEVER an abstract or tangential query that drops the subject (no bare 'old library', 'laboratory', 'starry sky', 'flowing data').",
       "overlays": "optional array, 0-2 items, ONLY for sections 2, 3, 4, 5 — see Overlay Rules below"
     }
   ]
@@ -138,6 +139,7 @@ Rules:
 - Never break the fourth wall ("welcome back", "in today's video", "don't forget to subscribe" — handled separately).
 - Cite specific numbers, species, places, dates where they sharpen the story.
 - No emoji, no markdown inside narration.
+- B-ROLL RELEVANCE (CRITICAL): every section's "visual" query must keep the "subject" visible. Lead each query with the subject noun, then vary the scene, action, or setting. The viewer should SEE the subject in most shots — not unrelated stock footage. If a beat is about history/discovery/data, still anchor on the subject (e.g. 'cave spider specimen under museum glass'), never a generic 'old archive' shot that drops it.
 
 Sub-topic focus for this episode: ${subTheme}
 - Pick one specific real subject that fits this sub-topic.
@@ -309,6 +311,32 @@ function sanitizeOverlay(raw: unknown, narration: string): SectionOverlay | null
   return { kind, triggerWord, text, subtext };
 }
 
+// The episode's visual anchor: the model's "subject" when usable, otherwise the
+// most meaningful title tokens, falling back to the sub-theme. Kept short so it
+// reads as a clean stock-search noun phrase.
+function deriveSubject(ep: Episode, subTheme: string): string {
+  const raw = typeof ep.subject === 'string' ? ep.subject.replace(/\s+/g, ' ').trim() : '';
+  if (raw) return raw.slice(0, 60);
+  const tokens = [...titleTokens(ep.title)];
+  if (tokens.length > 0) return tokens.slice(0, 2).join(' ');
+  return subTheme;
+}
+
+// Guarantees a section's b-roll query stays on-topic: if the model's "visual"
+// already names the subject (or its head noun), leave it; otherwise prepend the
+// subject so the stock search is biased toward footage that actually shows it.
+function anchorVisual(visual: string, subject: string): string {
+  const v = (visual ?? '').trim();
+  if (!subject) return v;
+  const subjLower = subject.toLowerCase();
+  const head = subjLower.split(/\s+/).filter(Boolean).pop() ?? subjLower;
+  const vLower = v.toLowerCase();
+  if (vLower.includes(subjLower) || (head.length >= 4 && vLower.includes(head))) {
+    return v;
+  }
+  return v ? `${subject} ${v}` : subject;
+}
+
 function normalizeEpisode(ep: Episode, series: Series, subTheme: string): Episode {
   const fallbackTags = [
     series.name.replace(/\s+/g, ''),
@@ -336,9 +364,14 @@ function normalizeEpisode(ep: Episode, series: Series, subTheme: string): Episod
   }
   if (description.length > 4900) description = description.slice(0, 4900);
 
+  const subject = deriveSubject(ep, subTheme);
+
   const sections = ep.sections.map((sec, i) => {
+    // Anchor every section's b-roll query to the episode subject so the footage
+    // stays on-topic even when the model writes an off-subject "visual".
+    const base = { ...sec, visual: anchorVisual(sec.visual, subject) };
     if (!OVERLAY_ALLOWED_SECTIONS.has(i)) {
-      const { overlays: _unused, ...rest } = sec;
+      const { overlays: _unused, ...rest } = base;
       void _unused;
       return rest;
     }
@@ -348,11 +381,11 @@ function normalizeEpisode(ep: Episode, series: Series, subTheme: string): Episod
       .filter((o): o is SectionOverlay => o !== null)
       .slice(0, 2);
     if (clean.length === 0) {
-      const { overlays: _unused, ...rest } = sec;
+      const { overlays: _unused, ...rest } = base;
       void _unused;
       return rest;
     }
-    return { ...sec, overlays: clean };
+    return { ...base, overlays: clean };
   });
 
   const thumbnailConcept =
@@ -364,7 +397,7 @@ function normalizeEpisode(ep: Episode, series: Series, subTheme: string): Episod
       ? ep.thumbnailWord.trim().toUpperCase()
       : undefined;
 
-  return { ...ep, description, tags, sections, thumbnailConcept, thumbnailWord };
+  return { ...ep, subject, description, tags, sections, thumbnailConcept, thumbnailWord };
 }
 
 // Hard cap on the headless `claude` call. Generating a full long-form script is

@@ -125,6 +125,12 @@ async function main(): Promise<void> {
   // BGM credit leads the attribution list; interlude tracks are appended below.
   const musicCredits: MusicCredit[] = [bgm.credit];
 
+  // Interlude footage is anchored to the episode subject (when the script model
+  // provided one) so even the breather shots stay on-topic; ambient *audio*
+  // still uses the series' generic mood query. Falls back to the series ambient
+  // query if no subject was resolved.
+  const interludeVisualQuery = episode.subject?.trim() || series.ambientQuery;
+
   const interludes: Interlude[] = [];
   for (let k = 0; k < interludeCount; k++) {
     log(`Step 5/8: Fetch interlude ${k + 1}/${interludeCount} (ambient audio + b-roll)`);
@@ -134,7 +140,7 @@ async function main(): Promise<void> {
       continue;
     }
     musicCredits.push(ambient.credit);
-    const visuals = await fetchBroll(series.ambientQuery, INTERLUDE_SEC, runDir, used, footageUsed);
+    const visuals = await fetchBroll(interludeVisualQuery, INTERLUDE_SEC, runDir, used, footageUsed);
     interludes.push({
       afterSectionIndex: interludePositions[k]!,
       durationSec: INTERLUDE_SEC,

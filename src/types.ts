@@ -22,6 +22,11 @@ export type Episode = {
   hook: string;
   description: string;
   tags: string[];
+  // The one concrete, photographable thing this whole episode is about (e.g.
+  // "cave spider", "glass frog", "Roman aqueduct"). Every section's b-roll
+  // query is anchored to this subject so the footage stays recognizably
+  // on-topic instead of drifting into abstract or tangential stock clips.
+  subject?: string;
   sections: ScriptSection[];
   // Concrete, non-abstract visual concept for the thumbnail background image,
   // and the single punchy caption word. Generated per-episode by the script
