@@ -30,8 +30,6 @@ export const COVERR_API_KEY = process.env.COVERR_API_KEY ?? '';
 // providers can't fill a section, Unsplash photos are turned into slow Ken Burns
 // (pan/zoom) clips so the section never replays the same footage. Optional.
 export const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY ?? '';
-export const FREESOUND_API_KEY = process.env.FREESOUND_API_KEY ?? '';
-export const FREESOUND_CLIENT_ID = process.env.FREESOUND_CLIENT_ID ?? '';
 
 // Azure Speech (neural TTS). These are the SAME neural voices msedge-tts tapped
 // unofficially (en-US-AndrewNeural, etc.), but via the licensed API that allows
