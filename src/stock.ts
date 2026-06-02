@@ -244,13 +244,13 @@ export async function fetchBgm(queries: string[], workDir: string): Promise<stri
 
 // Folder-name keywords marking the most atmospheric beds for interludes. mux
 // trims every interlude to INTERLUDE_SEC, so a long music track is fine as a
-// bed. Matches both the YouTube Audio Library mood folders (e.g. "Ambient -Calm",
-// "Classical-Calm") and the Pixabay tag folders.
+// bed. Matches the YouTube Audio Library mood folders (e.g. "Ambient-Calm",
+// "Classical-Calm").
 const LOCAL_AMBIENT_PREFERRED = ['ambient', 'calm', 'nature'];
 
 function pickLocalAmbient(): string | null {
-  // Same source policy as BGM (YouTube Audio Library only, Pixabay behind the
-  // escape hatch), then prefer the calmest beds within whatever is eligible.
+  // Same source policy as BGM (YouTube Audio Library only), then prefer the
+  // calmest beds within whatever is eligible.
   const all = eligibleTracks();
   if (all.length === 0) return null;
   const preferred = all.filter((file) =>
