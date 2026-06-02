@@ -382,9 +382,12 @@ const CLAUDE_HEARTBEAT_MS = 30 * 1000;
 // additional payoff.
 const SCRIPT_GEN_ATTEMPTS = 2;
 
-// Pin the headless CLI to Sonnet so generation cost/quota is predictable and
-// independent of whatever the account's default model happens to be.
-const CLAUDE_MODEL = 'claude-sonnet-4-6';
+// Pin the headless CLI to a fixed model so generation cost/quota is predictable
+// and independent of whatever the account's default happens to be.
+// To switch models, change this one line:
+//   - 'claude-opus-4-8'    → highest quality, burns more quota
+//   - 'claude-sonnet-4-6'  → faster, cheaper, plenty for documentary scripts
+const CLAUDE_MODEL = 'claude-opus-4-8';
 
 function runClaudeCli(prompt: string): Promise<string> {
   return new Promise((resolve, reject) => {
