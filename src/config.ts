@@ -43,6 +43,16 @@ export const YT_CLIENT_SECRET = process.env.YT_CLIENT_SECRET ?? '';
 export const YT_REFRESH_TOKEN = process.env.YT_REFRESH_TOKEN ?? '';
 export const YT_CHANNEL_ID = process.env.YT_CHANNEL_ID ?? '';
 
+// Appended to every long-form description (after chapters, before attribution)
+// so each video carries a consistent channel pitch + subscribe CTA. The
+// ?sub_confirmation=1 link only opens the subscribe prompt on a /channel/UC...
+// URL (not the @handle), so it is hard-coded here against the canonical ID.
+export const CHANNEL_FOOTER = [
+  '━━━━━━━━━━━━━━━',
+  '📺 UnchartedW0rld investigates the strangest true stories in nature, the deep sea, space, history and the human body — one short, cinematic case file at a time. New documentary every Monday, Wednesday and Saturday.',
+  '👉 Subscribe: https://www.youtube.com/channel/UCKj9-3uGF11Xw9kJbNl9GvQ?sub_confirmation=1',
+].join('\n');
+
 export const CLAUDE_MODEL = 'claude-sonnet-4-6';
 
 export const VIDEO_W = 1920;

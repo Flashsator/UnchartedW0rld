@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  CHANNEL_FOOTER,
   COLD_OPEN_SEC,
   DRY_RUN,
   FORCE_RUN,
@@ -241,7 +242,7 @@ async function main(): Promise<void> {
     footageUsed.has(s),
   );
   const attribution = buildAttribution(musicCredits, footageSources);
-  const fullDescription = [episode.description, chapters, attribution]
+  const fullDescription = [episode.description, chapters, CHANNEL_FOOTER, attribution]
     .filter(Boolean)
     .join('\n\n');
   const episodeForUpload: Episode = { ...episode, description: fullDescription };
