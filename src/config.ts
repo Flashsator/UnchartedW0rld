@@ -31,6 +31,12 @@ export const COVERR_API_KEY = process.env.COVERR_API_KEY ?? '';
 // (pan/zoom) clips so the section never replays the same footage. Optional.
 export const UNSPLASH_ACCESS_KEY = process.env.UNSPLASH_ACCESS_KEY ?? '';
 
+// Cloudflare Workers AI: primary thumbnail-background generator via FLUX.2
+// [klein] 9B. Replaces the anonymous Pollinations flux endpoint (now 402).
+// Free tier covers ~7 images/day before billing kicks in. Both required.
+export const CLOUDFLARE_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID ?? '';
+export const CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN ?? '';
+
 // Azure Speech (neural TTS). These are the SAME neural voices msedge-tts tapped
 // unofficially (en-US-AndrewNeural, etc.), but via the licensed API that allows
 // commercial use. F0 (free) tier covers ~500k chars/month — well above this

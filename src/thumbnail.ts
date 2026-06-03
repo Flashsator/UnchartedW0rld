@@ -1,6 +1,15 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
-import { THUMB_H, THUMB_W, UNSPLASH_ACCESS_KEY, type Series, type ThumbLayout } from './config.js';
+import {
+  CLOUDFLARE_ACCOUNT_ID,
+  CLOUDFLARE_API_TOKEN,
+  THUMB_H,
+  THUMB_W,
+  UNSPLASH_ACCESS_KEY,
+  type Series,
+  type ThumbLayout,
+} from './config.js';
 import { searchUnsplash } from './stock.js';
 import { downloadFile, ensureDir, log } from './utils.js';
 
@@ -290,10 +299,48 @@ function unsplashQueries(subject: string): string[] {
   return [...new Set(queries)].filter(Boolean);
 }
 
-// Stock-photo fallback for the thumbnail background: when the generative image
-// provider is down (Pollinations now returns 402 for the anonymous flux
-// endpoint), pull a real, on-topic landscape photo from Unsplash so the cover
-// is never just a flat color block. Returns true if a photo was downloaded.
+// Primary thumbnail background: Cloudflare Workers AI FLUX.2 [klein] 9B. This
+// replaces the anonymous Pollinations flux endpoint (now 402). The model takes
+// multipart form fields and returns the image as a base64 string in JSON.
+// Returns true if an image was generated and written to bgPath.
+const FLUX_MODEL = '@cf/black-forest-labs/flux-2-klein-9b';
+const FLUX_STEPS = Number(process.env.FLUX_STEPS ?? 20);
+
+async function fetchFluxBackground(prompt: string, bgPath: string): Promise<boolean> {
+  if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) return false;
+  const url = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/${FLUX_MODEL}`;
+  try {
+    const form = new FormData();
+    form.append('prompt', prompt);
+    form.append('width', String(THUMB_W));
+    form.append('height', String(THUMB_H));
+    form.append('steps', String(FLUX_STEPS));
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}` },
+      body: form,
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`);
+    }
+    const data = (await res.json()) as { result?: { image?: string } };
+    const b64 = data.result?.image;
+    if (!b64) throw new Error('response had no image field');
+    ensureDir(path.dirname(bgPath));
+    fs.writeFileSync(bgPath, Buffer.from(b64, 'base64'));
+    log('Thumbnail: FLUX.2 [klein] 9B background generated');
+    return true;
+  } catch (e) {
+    log(`Thumbnail: FLUX generation failed (${(e as Error).message})`);
+    return false;
+  }
+}
+
+// Stock-photo fallback for the thumbnail background: when FLUX generation is
+// unavailable (no credentials, quota exhausted, or API error), pull a real,
+// on-topic landscape photo from Unsplash so the cover is never just a flat
+// color block. Returns true if a photo was downloaded.
 async function fetchUnsplashBackground(subject: string, bgPath: string): Promise<boolean> {
   if (!UNSPLASH_ACCESS_KEY) return false;
   for (const q of unsplashQueries(subject)) {
@@ -339,19 +386,14 @@ export async function makeThumbnail(
   // force a recognizable real-world composition: viewers must instantly read
   // WHAT it is. Extreme macro / abstract textures look like nothing.
   const prompt = `${subject}, clear recognizable real-world subject, cinematic medium shot, ${safeStyle}, photorealistic, sharp focus on the main subject, dramatic lighting, depth of field, 16:9, editorial documentary, vibrant colors, not abstract, no extreme macro close-up, no text, no letters, no words, no captions, no watermark, no logo, no gore, no blood`;
-  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${THUMB_W}&height=${THUMB_H}&nologo=true&model=flux`;
 
   log(`Thumbnail: requesting background image (layout: ${layout})...`);
-  let haveBg = false;
-  try {
-    await downloadFile(url, bgPath);
-    haveBg = true;
-  } catch (e) {
-    log(`Pollinations failed (${(e as Error).message}); falling back to Unsplash`);
-  }
-  // Pollinations down? Use a real on-topic Unsplash photo before giving up on an
-  // image entirely — a flat gradient cover reads as "broken/empty".
+  // Primary: Cloudflare FLUX.2 [klein] 9B. Fall back to a real on-topic Unsplash
+  // photo before giving up on an image entirely — a flat gradient cover reads as
+  // "broken/empty".
+  let haveBg = await fetchFluxBackground(prompt, bgPath);
   if (!haveBg) {
+    log('Thumbnail: FLUX unavailable; falling back to Unsplash');
     haveBg = await fetchUnsplashBackground(subject, bgPath);
   }
   if (!haveBg) {
