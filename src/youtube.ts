@@ -18,6 +18,18 @@ function getClient() {
   return google.youtube({ version: 'v3', auth: oauth });
 }
 
+// Sets (replaces) the thumbnail on an existing video. Exported so a thumbnail
+// can be regenerated and re-applied to an already-published video without
+// re-uploading the whole thing.
+export async function setThumbnail(videoId: string, thumbnailPath: string): Promise<void> {
+  const yt = getClient();
+  await yt.thumbnails.set({
+    videoId,
+    media: { body: fs.createReadStream(thumbnailPath) },
+  });
+  log(`Thumbnail set on ${videoId}`);
+}
+
 export type UploadOptions = {
   publishAt?: Date;
   isShorts?: boolean;
@@ -139,11 +151,7 @@ export async function uploadVideo(
   log(`Uploaded video id ${videoId}, scheduled for ${scheduledIso}`);
 
   if (thumbnailPath) {
-    await yt.thumbnails.set({
-      videoId,
-      media: { body: fs.createReadStream(thumbnailPath) },
-    });
-    log(`Thumbnail set on ${videoId}`);
+    await setThumbnail(videoId, thumbnailPath);
   }
 
   return videoId;

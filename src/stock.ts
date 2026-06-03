@@ -200,7 +200,9 @@ type UnsplashResp = { results: UnsplashPhoto[] };
 // Unsplash gives still photos only, so it is a *fallback* for b-roll: each photo
 // is turned into a slow Ken Burns clip (below) and used only when the video
 // providers come up short for a section. Landscape-only so it fills 16:9.
-async function searchUnsplash(query: string): Promise<string[]> {
+// Exported so the thumbnail builder can reuse it as a background-image fallback
+// when the generative image provider is unavailable.
+export async function searchUnsplash(query: string): Promise<string[]> {
   if (!UNSPLASH_ACCESS_KEY) return [];
   const url =
     `https://api.unsplash.com/search/photos?query=${encodeURIComponent(query)}` +

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import sharp from 'sharp';
-import { THUMB_H, THUMB_W, type Series, type ThumbLayout } from './config.js';
+import { THUMB_H, THUMB_W, UNSPLASH_ACCESS_KEY, type Series, type ThumbLayout } from './config.js';
+import { searchUnsplash } from './stock.js';
 import { downloadFile, ensureDir, log } from './utils.js';
 
 // Derive the visual subject from the episode title so the background image is
@@ -273,6 +274,42 @@ function buildSvgOverlay(
   return { svg: Buffer.from(svgStr), meta };
 }
 
+// Build progressively broader Unsplash queries from the episode subject so that
+// even when the exact subject has no match, an on-topic photo still comes back.
+function unsplashQueries(subject: string): string[] {
+  const words = subject
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 4 && !STOPWORDS.has(w));
+  const uniq = [...new Set(words)];
+  const queries: string[] = [];
+  if (uniq.length > 0) queries.push(uniq.slice(0, 6).join(' '));
+  if (uniq.length > 3) queries.push(uniq.slice(0, 3).join(' '));
+  if (uniq.length > 0) queries.push(uniq[0]!);
+  return [...new Set(queries)].filter(Boolean);
+}
+
+// Stock-photo fallback for the thumbnail background: when the generative image
+// provider is down (Pollinations now returns 402 for the anonymous flux
+// endpoint), pull a real, on-topic landscape photo from Unsplash so the cover
+// is never just a flat color block. Returns true if a photo was downloaded.
+async function fetchUnsplashBackground(subject: string, bgPath: string): Promise<boolean> {
+  if (!UNSPLASH_ACCESS_KEY) return false;
+  for (const q of unsplashQueries(subject)) {
+    try {
+      const photos = await searchUnsplash(q);
+      if (photos.length === 0) continue;
+      await downloadFile(photos[0]!, bgPath);
+      log(`Thumbnail: Unsplash background for "${q}"`);
+      return true;
+    } catch (e) {
+      log(`Thumbnail: Unsplash attempt "${q}" failed: ${(e as Error).message}`);
+    }
+  }
+  return false;
+}
+
 export async function makeThumbnail(
   title: string,
   series: Series,
@@ -305,10 +342,20 @@ export async function makeThumbnail(
   const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${THUMB_W}&height=${THUMB_H}&nologo=true&model=flux`;
 
   log(`Thumbnail: requesting background image (layout: ${layout})...`);
+  let haveBg = false;
   try {
     await downloadFile(url, bgPath);
+    haveBg = true;
   } catch (e) {
-    log(`Pollinations failed, using gradient fallback: ${(e as Error).message}`);
+    log(`Pollinations failed (${(e as Error).message}); falling back to Unsplash`);
+  }
+  // Pollinations down? Use a real on-topic Unsplash photo before giving up on an
+  // image entirely — a flat gradient cover reads as "broken/empty".
+  if (!haveBg) {
+    haveBg = await fetchUnsplashBackground(subject, bgPath);
+  }
+  if (!haveBg) {
+    log('Thumbnail: no image source available, using gradient fallback');
     await sharp({
       create: {
         width: THUMB_W,
