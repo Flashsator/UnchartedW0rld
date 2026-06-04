@@ -22,6 +22,7 @@ const FALLBACK_SHORTS: ShortsManifest = {
   longTitle: 'Untitled',
   shortsTitle: 'Untitled #Shorts',
   hook: 'Did you know?',
+  cardHook: 'Did you know?',
   sectionIdx: 0,
   audioPath: '',
   duration: 30,

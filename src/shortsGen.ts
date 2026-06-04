@@ -85,6 +85,34 @@ function truncate(s: string, max: number): string {
   return s.length <= max ? s : `${s.slice(0, max - 1).trimEnd()}…`;
 }
 
+// The biggest text block on the short is the on-screen title card. A full hook
+// sentence (or two) wraps into many lines and covers the frame, so we distil it
+// to one punchy thought: take the first sentence, then word-trim to a short cap
+// so it lands in ~2 lines at a big, readable size.
+const CARD_HOOK_MAX_CHARS = 60;
+
+function compactHook(text: string): string {
+  const clean = text.trim().replace(/\s+/g, ' ');
+  // First sentence (keep its terminal punctuation — a question hook reads well).
+  const firstSentence = clean.match(/^.*?[.!?](?:\s|$)/)?.[0].trim() ?? clean;
+  if (firstSentence.length <= CARD_HOOK_MAX_CHARS) return firstSentence;
+  // Too long even as one sentence. Prefer cutting at the last clause boundary
+  // (comma/semicolon/colon/dash) that fits, so the card reads as a complete
+  // thought instead of stopping mid-phrase.
+  const clause = firstSentence.slice(0, CARD_HOOK_MAX_CHARS).match(/^.*[,;:—–-]/)?.[0];
+  if (clause && clause.length >= 20) {
+    return `${clause.replace(/[\s,;:—–-]+$/, '')}…`;
+  }
+  // No usable clause break — word-trim to the cap and add an ellipsis.
+  const words = firstSentence.split(' ');
+  let out = '';
+  for (const w of words) {
+    if ((out ? `${out} ${w}` : w).length > CARD_HOOK_MAX_CHARS - 1) break;
+    out = out ? `${out} ${w}` : w;
+  }
+  return `${(out || firstSentence.slice(0, CARD_HOOK_MAX_CHARS - 1)).trimEnd()}…`;
+}
+
 export function buildShortsManifest(
   long: RenderManifest,
   _longEpisode: Episode,
@@ -123,6 +151,7 @@ export function buildShortsManifest(
     longTitle: long.title,
     shortsTitle,
     hook: hookText,
+    cardHook: compactHook(hookText),
     sectionIdx: entry.sectionIdx,
     audioPath: section.audioPath,
     duration,

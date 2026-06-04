@@ -25,17 +25,17 @@ type KenBurns = {
   yTo: number;
 };
 
-// The on-screen hook is the single biggest text block on the short. A long
-// title at a fixed size wraps into many lines and swallows the whole frame, so
-// the font size steps down as the hook gets longer. Paired with a line clamp
-// below, this keeps the title to a tidy block near the top.
+// The on-screen hook is the single biggest text block on the short. The text is
+// already distilled to one short thought upstream (compactHook, ≤60 chars), so
+// the font stays large and punchy and only eases down for the longest cases.
+// Paired with the 3-line clamp below, this keeps the title to a tidy block near
+// the top instead of swallowing the frame.
 function hookFontSize(text: string): number {
   const len = text.trim().length;
   if (len <= 24) return 84;
-  if (len <= 38) return 72;
-  if (len <= 54) return 60;
-  if (len <= 72) return 52;
-  return 46;
+  if (len <= 38) return 76;
+  if (len <= 50) return 66;
+  return 58;
 }
 
 function kenBurnsFor(clipIdx: number): KenBurns {
@@ -181,18 +181,18 @@ export function ShortsScene({ manifest }: ShortsSceneProps) {
             color: '#fff',
             fontFamily: '"Inter", "Helvetica Neue", system-ui, sans-serif',
             fontWeight: 800,
-            fontSize: hookFontSize(manifest.hook),
+            fontSize: hookFontSize(manifest.cardHook),
             lineHeight: 1.08,
             letterSpacing: '-0.01em',
             textShadow:
               '0 2px 14px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.95)',
             display: '-webkit-box',
-            WebkitLineClamp: 5,
+            WebkitLineClamp: 3,
             WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
           }}
         >
-          {manifest.hook}
+          {manifest.cardHook}
         </div>
       </div>
 

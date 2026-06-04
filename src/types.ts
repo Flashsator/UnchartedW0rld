@@ -137,7 +137,12 @@ export type ShortsManifest = {
   series: string;
   longTitle: string;
   shortsTitle: string;
+  // Full hook line — used to seed the shorts description/blurb.
   hook: string;
+  // Compact, single-thought version of the hook for the on-screen title card,
+  // so the big text block stays to a couple of lines instead of swallowing the
+  // frame. Derived from `hook` in buildShortsManifest.
+  cardHook: string;
   sectionIdx: number;
   audioPath: string;
   // Total composition length = narrationSec + outroSec. Narration plays for

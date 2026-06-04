@@ -100,7 +100,11 @@ export function SubtitleOverlay({ words, variant = 'horizontal' }: SubtitleOverl
         }}
       >
         {active.words.map((w, i) => {
-          const isActive = i === activeIdx;
+          // Karaoke per-word highlight is a Shorts-only device: on mobile, often
+          // muted and fast-scrolled, the lit word locks the eye and sets pace.
+          // Long-form (16:9, lean-back, documentary tone) reads the whole line at
+          // once, so it stays calm — uniform white, no recolor, no pop.
+          const isActive = isVertical && i === activeIdx;
           // Quick pop as a word lights up, so the highlight reads as a beat
           // rather than a static recolor. transform scale doesn't reflow, so
           // neighbouring words stay put.
