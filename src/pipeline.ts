@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  BGM_VOLUME,
   CHANNEL_FOOTER,
   COLD_OPEN_SEC,
   DRY_RUN,
@@ -197,7 +198,7 @@ async function main(): Promise<void> {
     interludes,
     outro: { durationSec: OUTRO_SUBSCRIBE_SEC },
     bgmPath,
-    bgmVolume: 0.35,
+    bgmVolume: BGM_VOLUME,
     totalDuration,
     sting: {
       subFreq: structure.stingSubFreq,

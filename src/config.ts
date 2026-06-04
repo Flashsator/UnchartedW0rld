@@ -93,6 +93,11 @@ export const TTS_RATE = '-2%';
 export const BROLL_CLIP_SEC = 5;
 export const BROLL_MIN_HEIGHT = 1080;
 
+// Background-music level (0–1) mixed under the narration by ffmpeg (see mux.ts).
+// Applies to both long-form and shorts (shorts inherit the long-form value).
+// Lower = subtler bed; raise if BGM gets lost. Was 0.35; lowered for a quieter mix.
+export const BGM_VOLUME = 0.25;
+
 export const PUBLISH_OFFSET_HOURS = 4;
 // US-afternoon publish window, shared by long videos and shorts so the whole
 // channel lands in the same slot: 19:00 UTC ≈ 3pm ET / 12pm PT (summer),
