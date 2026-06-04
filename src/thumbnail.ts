@@ -441,21 +441,31 @@ export async function makeThumbnail(
       .toFile(bgPath);
   }
 
+  const outPath = path.join(outDir, 'thumbnail.jpg');
+  return composeThumbnail(bgPath, title, series, layout, outPath, kickerOverride);
+}
+
+// Resize the background to the thumbnail frame and composite the text card on
+// top. The background is intentionally NOT dimmed: the generated/stock image
+// keeps its full brightness and color. The text cards carry their own solid
+// blocks/panels, so legibility never depended on darkening the photo. Exported
+// so cached backgrounds (work/.../thumb/bg.jpg) can be re-composited without
+// re-spending image-generation quota.
+export async function composeThumbnail(
+  bgPath: string,
+  title: string,
+  series: Series,
+  layout: ThumbLayout,
+  outPath: string,
+  kickerOverride?: string,
+): Promise<string> {
   const { svg: overlaySvg, meta } = buildSvgOverlay(title, series, layout, kickerOverride);
   log(`Thumbnail variant: ${meta}`);
-  const outPath = path.join(outDir, 'thumbnail.jpg');
-
-  const dimmedBg = await sharp(bgPath)
-    .resize(THUMB_W, THUMB_H, { fit: 'cover' })
-    .modulate({ brightness: 0.55, saturation: 1.45 })
-    .linear(1.15, -12)
-    .toBuffer();
-
-  await sharp(dimmedBg)
+  const base = await sharp(bgPath).resize(THUMB_W, THUMB_H, { fit: 'cover' }).toBuffer();
+  await sharp(base)
     .composite([{ input: overlaySvg, top: 0, left: 0 }])
     .jpeg({ quality: 92 })
     .toFile(outPath);
-
   log(`Thumbnail: ${outPath}`);
   return outPath;
 }
