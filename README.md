@@ -44,7 +44,7 @@ Remotion (headless Chrome)  silent MP4 (intro / sections / breather / outro)
   ↓
 ffmpeg                      mux narration + BGM ducking + ambient + limiter
   ↓
-Pollinations + sharp        1280×720 thumbnail with title overlay
+FLUX.2 [klein] + sharp      1280×720 thumbnail with title overlay (Unsplash fallback)
   ↓
 YouTube Data API            scheduled publish (private + publishAt)
 ```
@@ -133,7 +133,7 @@ src/             pipeline modules (one per stage)
   scriptGen.ts   Claude Code CLI (headless claude -p, model pinned via CLAUDE_MODEL)
   tts.ts         Azure Speech neural TTS
   stock.ts       Pexels / Pixabay b-roll + local royalty-free BGM
-  thumbnail.ts   Pollinations + sharp
+  thumbnail.ts   Cloudflare FLUX.2 [klein] + sharp (Unsplash fallback)
   render.ts      Remotion bundle + renderMedia
   mux.ts         ffmpeg audio mux + SRT
   youtube.ts     googleapis upload
@@ -152,7 +152,8 @@ scripts/
 
 | Item | Monthly |
 |---|---|
-| Pexels / Pixabay / Coverr / Unsplash / Pollinations | $0 |
+| Pexels / Pixabay / Coverr / Unsplash | $0 |
+| Cloudflare Workers AI (FLUX.2 [klein], thumbnails) | $0 (~7 free img/day; ~3 used/wk) |
 | Azure Speech (neural TTS, F0 free tier ~500k chars/mo) | $0 |
 | YouTube API | $0 (well within quota) |
 | GitHub Actions on a public repo | $0 |
