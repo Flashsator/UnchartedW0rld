@@ -1,19 +1,27 @@
-// One-off preview: generate a single full thumbnail (FLUX.2 [klein] 9B
-// background + composited text card) so the new generator can be eyeballed
-// before wiring it into the daily pipeline. Run: npx tsx scripts/thumb_preview.ts
+// One-off preview: generate full thumbnails (FLUX.2 [klein] 9B background +
+// composited text card) across several series/layouts so the look can be
+// eyeballed before relying on it in the daily pipeline.
+// Run: npx tsx scripts/thumb_preview.ts
 import path from 'node:path';
-import { ROOT, SERIES_POOL } from '../src/config.js';
+import { ROOT, SERIES_POOL, type ThumbLayout } from '../src/config.js';
 import { makeThumbnail } from '../src/thumbnail.js';
 import { ensureDir, log } from '../src/utils.js';
 
-async function main(): Promise<void> {
-  const series = SERIES_POOL.find((s) => s.key === 'ocean')!;
-  const title = 'Profile: The Creature That Glows Where No Light Reaches';
-  const layout = 'q_diag_split' as const;
-  const workDir = ensureDir(path.join(ROOT, 'work', 'thumb-preview'));
+type Sample = { series: string; title: string; layout: ThumbLayout };
 
-  const out = await makeThumbnail(title, series, layout, workDir);
-  log(`Preview thumbnail written: ${out}`);
+const SAMPLES: Sample[] = [
+  // Previously flagged by FLUX output moderation (predator/hunts/dark);
+  // re-run to confirm the prompt-softening lets it pass.
+  { series: 'animals', title: 'Profile: The Predator That Hunts in the Dark', layout: 'q_giant_overlay' },
+];
+
+async function main(): Promise<void> {
+  for (const s of SAMPLES) {
+    const series = SERIES_POOL.find((x) => x.key === s.series)!;
+    const workDir = ensureDir(path.join(ROOT, 'work', 'thumb-preview', s.series));
+    const out = await makeThumbnail(s.title, series, s.layout, workDir);
+    log(`Preview [${s.series}/${s.layout}]: ${out}`);
+  }
 }
 
 main().catch((e) => {
