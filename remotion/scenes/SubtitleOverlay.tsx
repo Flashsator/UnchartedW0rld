@@ -13,6 +13,18 @@ type SubtitleOverlayProps = {
 // end-card highlight elsewhere in the short).
 const HIGHLIGHT = '#FFE94A';
 
+// Long-form captions are forced onto a single line (no wrap). The 1920px-wide
+// frame at ~92% width fits ~50 chars at the base size, and 4-word cues are
+// almost always shorter, so the base size is held for the overwhelming
+// majority. The step-downs only kick in for the rare extra-long cue, purely as
+// an overflow safety net.
+function horizontalFontSize(text: string): number {
+  const len = text.trim().length;
+  if (len <= 48) return 60;
+  if (len <= 56) return 52;
+  return 46;
+}
+
 // The active word is the last one that has started. Holding the most recent
 // word lit through the micro-gaps between words (rather than going blank) keeps
 // the karaoke read continuous instead of flickering.
@@ -46,8 +58,10 @@ export function SubtitleOverlay({ words, variant = 'horizontal' }: SubtitleOverl
 
   const isVertical = variant === 'vertical';
   const topPct = isVertical ? '60%' : '80%';
-  const maxWidth = isVertical ? '88%' : '78%';
-  const fontSize = isVertical ? 82 : 60;
+  // Long-form: widen the box and force one line. Shorts: narrower box, wrapping
+  // is fine since the frame is portrait and lines are short anyway.
+  const maxWidth = isVertical ? '88%' : '92%';
+  const fontSize = isVertical ? 82 : horizontalFontSize(active.text);
   const strokeWidth = isVertical ? '3px' : '2px';
 
   const activeIdx = activeWordIndex(active.words, t);
@@ -63,7 +77,9 @@ export function SubtitleOverlay({ words, variant = 'horizontal' }: SubtitleOverl
           maxWidth,
           opacity: fade,
           display: 'flex',
-          flexWrap: 'wrap',
+          // Long-form: never wrap — keep the cue on a single line. Shorts: allow
+          // wrapping since the portrait frame is narrow.
+          flexWrap: isVertical ? 'wrap' : 'nowrap',
           justifyContent: 'center',
           alignItems: 'baseline',
           columnGap: isVertical ? 18 : 14,
