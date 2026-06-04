@@ -96,7 +96,7 @@ function buildSystemPrompt(
     .map((role, i) => `- Section ${i}: ${role}`)
     .join('\n');
 
-  return `You write narration scripts for a daily YouTube mini-documentary channel called "UnchartedW0rld". The channel publishes investigative discovery-style episodes about under-known corners of nature, science, and history.
+  return `You write narration scripts for a daily YouTube mini-documentary channel called "UnchartedW0rld". The channel publishes investigative discovery-style episodes about the living world — the strange biology, behavior, and survival strategies of animals, insects, and plants, from mammals and birds to insects and the plants that quietly break biology.
 
 This episode's structural template: ${structure.label}
 ${structure.structuralMantra}

@@ -55,7 +55,7 @@ export const YT_CHANNEL_ID = process.env.YT_CHANNEL_ID ?? '';
 // URL (not the @handle), so it is hard-coded here against the canonical ID.
 export const CHANNEL_FOOTER = [
   '━━━━━━━━━━━━━━━',
-  '📺 UnchartedW0rld investigates the strangest true stories in nature, the deep sea, space, history and the human body — one short, cinematic case file at a time. New documentary every Monday, Wednesday and Saturday.',
+  '📺 UnchartedW0rld investigates the strangest true stories from the living world — animals, insects, and plants that quietly break biology — one short, cinematic case file at a time. New documentary every Monday (animals), Wednesday (insects) and Saturday (plants).',
   '👉 Subscribe: https://www.youtube.com/channel/UCKj9-3uGF11Xw9kJbNl9GvQ?sub_confirmation=1',
 ].join('\n');
 
@@ -105,6 +105,8 @@ export const DRY_RUN = process.env.DRY_RUN === '1';
 export const FORCE_RUN = process.env.FORCE_RUN === '1';
 
 // UTC weekdays we publish on. 0=Sun, 1=Mon, ..., 6=Sat. Mon/Wed/Sat.
+// Documents the cadence (the actual trigger is the Cloudflare cron); each of
+// these days is assigned a topic by WEEKDAY_SERIES_MAP below.
 export const PUBLISH_WEEKDAYS_UTC: readonly number[] = [1, 3, 6];
 
 export type Voice = {
@@ -149,8 +151,9 @@ export type Series = {
   imageStyle: string;
   musicQueries: string[];
   ambientQuery: string;
-  // Higher weight = appears more often in the weekly rotation. Default 1.
-  // Bump performers, drop dud topics. Tunable without code logic changes.
+  // Relative priority, default 1. Currently unused by the fixed weekday
+  // schedule (see seriesForToday); retained as metadata and for an optional
+  // future return to weighted random rotation.
   weight?: number;
 };
 
@@ -256,6 +259,26 @@ export const SERIES_POOL: Series[] = [
     weight: 1.4,
   },
   {
+    key: 'plants',
+    name: 'Rooted Anomalies',
+    theme:
+      'carnivorous plants, parasitic plants, chemical warfare between plants, plant communication, extreme survival strategies, plants that move, plants that mimic other organisms, plants that outlive civilizations',
+    subThemes: [
+      'a plant that hunts, traps, and digests animals',
+      'a parasitic plant that steals everything from another plant',
+      'a plant that wages chemical warfare on its neighbors',
+      'a plant that warns or signals others when attacked',
+      'a plant that survives where almost nothing should grow',
+      'a plant that mimics another organism to deceive it',
+      'a single plant organism older than recorded history',
+    ],
+    categoryId: '27',
+    imageStyle: 'botanical macro, dramatic chiaroscuro lighting, dewdrops, deep greens with one vivid accent, faintly menacing',
+    musicQueries: ['organic ambient documentary', 'botanical cinematic underscore', 'earth nature cinematic', 'mysterious cinematic underscore'],
+    ambientQuery: 'rainforest leaves ambient',
+    weight: 1.0,
+  },
+  {
     key: 'body',
     name: 'The Human Machine',
     theme:
@@ -296,6 +319,26 @@ export const SERIES_POOL: Series[] = [
     weight: 0.7,
   },
 ];
+
+// Channel positioning: only living-world episodes ship — animals, insects, and
+// plants. The other series definitions above are kept (not deleted) so the
+// channel can be re-broadened later by adding their keys here. A manual
+// SERIES_KEY override can still target any defined series.
+export const ACTIVE_SERIES_KEYS: readonly string[] = ['animals', 'insects', 'plants'];
+
+export const ACTIVE_SERIES_POOL: Series[] = SERIES_POOL.filter((s) =>
+  ACTIVE_SERIES_KEYS.includes(s.key),
+);
+
+// Fixed weekday → series mapping. Each publish day owns one topic so the slate
+// reads as themed days: Mon = animals, Wed = insects, Sat = plants. Keys must
+// be a subset of ACTIVE_SERIES_KEYS. Weekdays use UTC (0=Sun … 6=Sat) to match
+// PUBLISH_WEEKDAYS_UTC.
+export const WEEKDAY_SERIES_MAP: Readonly<Record<number, string>> = {
+  1: 'animals',
+  3: 'insects',
+  6: 'plants',
+};
 
 export type HookPattern = { name: string; example: string; rule: string };
 
@@ -596,57 +639,13 @@ export function pickThumbLayout(): ThumbLayout {
 }
 
 // --- Series rotation ---------------------------------------------------------
-// Goals (from user spec):
-//   1. Big pool, each topic feels non-repetitive.
-//   2. No two posts in the same week share a series.
-//   3. Higher-weight series appear more often.
-//   4. Trending events can override the rotation (SERIES_KEY env).
-//
-// Strategy: deterministic per-week weighted shuffle. Each ISO week we pick
-// PUBLISH_WEEKDAYS_UTC.length distinct series from the pool — high-weight
-// series have a higher chance of landing in the early slots of the shuffle,
-// which are the slots actually used. State-free, reproducible, testable.
-
-function isoWeekKey(date: Date): number {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  // Thursday in current week decides the year (ISO 8601).
-  const dayNum = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const weekNum = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
-  return d.getUTCFullYear() * 100 + weekNum;
-}
-
-// Mulberry32-style seeded PRNG. Deterministic given the same seed.
-function seededRng(seed: number): () => number {
-  let s = seed | 0;
-  return () => {
-    s = (s + 0x6d2b79f5) | 0;
-    let t = s;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-// Efraimidis-Spirakis weighted sampling without replacement. We sort by
-// key = rand^(1/weight) descending and take the top N. Higher weights tend
-// to land at the top.
-function weightedShuffle<T extends { weight?: number }>(items: readonly T[], rng: () => number): T[] {
-  const keyed = items.map((it) => {
-    const w = Math.max(0.0001, it.weight ?? 1);
-    const r = Math.max(1e-12, rng());
-    return { it, key: Math.log(r) / w };
-  });
-  keyed.sort((a, b) => b.key - a.key);
-  return keyed.map((k) => k.it);
-}
-
-function weeklySchedule(date: Date): Series[] {
-  const seed = isoWeekKey(date);
-  const rng = seededRng(seed);
-  return weightedShuffle(SERIES_POOL, rng);
-}
+// Fixed weekday schedule (themed days). Each UTC publish day maps to exactly
+// one active series via WEEKDAY_SERIES_MAP: Mon = animals, Wed = insects,
+// Sat = plants. Deterministic, state-free, trivially testable. Overrides:
+//   - SERIES_KEY env: trending-event injection — forces any defined series.
+//   - WEEKDAY env: forces a specific UTC weekday's mapping (manual dispatch).
+// A non-publish-day manual run with no override falls back to a day-of-month
+// rotation over the active pool, so a stray run still stays on positioning.
 
 export function seriesForToday(): Series {
   // 1. Hard override for trending-event injection (manual dispatch).
@@ -656,25 +655,24 @@ export function seriesForToday(): Series {
     if (found) return found;
   }
 
-  // 2. Legacy WEEKDAY env: treat as a direct pool index.
+  // 2. Resolve which UTC weekday to schedule for — a forced WEEKDAY env or today.
   const weekdayEnv = process.env.WEEKDAY?.trim();
-  if (weekdayEnv && !Number.isNaN(Number(weekdayEnv))) {
-    const idx = Number(weekdayEnv) % SERIES_POOL.length;
-    return SERIES_POOL[idx]!;
+  const utcDay =
+    weekdayEnv && !Number.isNaN(Number(weekdayEnv))
+      ? Number(weekdayEnv)
+      : new Date().getUTCDay();
+
+  // 3. Fixed weekday → series mapping for that publish day.
+  const mappedKey = WEEKDAY_SERIES_MAP[utcDay];
+  if (mappedKey) {
+    const found = ACTIVE_SERIES_POOL.find((s) => s.key === mappedKey);
+    if (found) return found;
   }
 
-  // 3. Weekly schedule: shuffle the pool deterministically per ISO week,
-  //    pick by which publish-day-of-week this is.
-  const now = new Date();
-  const schedule = weeklySchedule(now);
-  const utcDay = now.getUTCDay();
-  const slotIdx = PUBLISH_WEEKDAYS_UTC.indexOf(utcDay);
-  if (slotIdx >= 0) return schedule[slotIdx % schedule.length]!;
-
-  // Fallback: non-publish-day manual run. Use day-of-month for variety
-  // without colliding with the week's reserved slots.
-  const fallbackIdx = (now.getUTCDate() + PUBLISH_WEEKDAYS_UTC.length) % schedule.length;
-  return schedule[fallbackIdx]!;
+  // 4. Fallback: non-publish-day manual run. Rotate the active pool by
+  //    day-of-month so a stray run still produces an on-positioning topic.
+  const fallbackIdx = new Date().getUTCDate() % ACTIVE_SERIES_POOL.length;
+  return ACTIVE_SERIES_POOL[fallbackIdx]!;
 }
 
 export function pickSubTheme(series: Series): string {
