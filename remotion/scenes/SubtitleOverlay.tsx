@@ -25,6 +25,19 @@ function horizontalFontSize(text: string): number {
   return 46;
 }
 
+// Shorts captions are also kept to a single line. The portrait frame is only
+// 1080px wide, so the base 82px only fits short cues; the size steps down as
+// the cue gets longer so a 4-word cue still lands on one line at ~92% width.
+// Short cues keep the big, punchy size.
+function verticalFontSize(text: string): number {
+  const len = text.trim().length;
+  if (len <= 22) return 82;
+  if (len <= 28) return 70;
+  if (len <= 34) return 60;
+  if (len <= 40) return 52;
+  return 46;
+}
+
 // The active word is the last one that has started. Holding the most recent
 // word lit through the micro-gaps between words (rather than going blank) keeps
 // the karaoke read continuous instead of flickering.
@@ -58,10 +71,10 @@ export function SubtitleOverlay({ words, variant = 'horizontal' }: SubtitleOverl
 
   const isVertical = variant === 'vertical';
   const topPct = isVertical ? '60%' : '80%';
-  // Long-form: widen the box and force one line. Shorts: narrower box, wrapping
-  // is fine since the frame is portrait and lines are short anyway.
-  const maxWidth = isVertical ? '88%' : '92%';
-  const fontSize = isVertical ? 82 : horizontalFontSize(active.text);
+  // Both layouts force a single line (no wrap). The font auto-shrinks per cue
+  // so even a long 4-word cue fits one line within the box width.
+  const maxWidth = isVertical ? '92%' : '92%';
+  const fontSize = isVertical ? verticalFontSize(active.text) : horizontalFontSize(active.text);
   const strokeWidth = isVertical ? '3px' : '2px';
 
   const activeIdx = activeWordIndex(active.words, t);
@@ -77,9 +90,9 @@ export function SubtitleOverlay({ words, variant = 'horizontal' }: SubtitleOverl
           maxWidth,
           opacity: fade,
           display: 'flex',
-          // Long-form: never wrap — keep the cue on a single line. Shorts: allow
-          // wrapping since the portrait frame is narrow.
-          flexWrap: isVertical ? 'wrap' : 'nowrap',
+          // Never wrap — both layouts keep the cue on a single line (the font
+          // auto-shrinks per cue to make it fit).
+          flexWrap: 'nowrap',
           justifyContent: 'center',
           alignItems: 'baseline',
           columnGap: isVertical ? 18 : 14,
