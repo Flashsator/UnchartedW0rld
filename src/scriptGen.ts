@@ -96,7 +96,7 @@ function buildSystemPrompt(
     .map((role, i) => `- Section ${i}: ${role}`)
     .join('\n');
 
-  return `You write narration scripts for a daily YouTube mini-documentary channel called "UnchartedW0rld". The channel publishes investigative discovery-style episodes about the living world — the strange biology, behavior, and survival strategies of animals, insects, and plants, from mammals and birds to insects and the plants that quietly break biology.
+  return `You write narration scripts for a daily YouTube mini-documentary channel called "Wild Anomalies". The channel publishes investigative discovery-style episodes about the living world — the strange biology, behavior, and survival strategies of animals, insects, and plants, from mammals and birds to insects and the plants that quietly break biology.
 
 This episode's structural template: ${structure.label}
 ${structure.structuralMantra}
@@ -357,7 +357,7 @@ function normalizeEpisode(ep: Episode, series: Series, subTheme: string): Episod
 
   let description = (ep.description ?? '').trim();
   if (!description) {
-    description = `${ep.hook}\n\nA short mini-documentary from UnchartedW0rld on ${subTheme}.`;
+    description = `${ep.hook}\n\nA short mini-documentary from Wild Anomalies on ${subTheme}.`;
   }
   if (hashtags && !/#[A-Za-z0-9]+/.test(description)) {
     description = `${description}\n\n${hashtags}`;

@@ -59,7 +59,7 @@ async function main(): Promise<void> {
   const thumbLayout = pickThumbLayout();
   const subTheme = pickSubTheme(series);
 
-  log(`=== UnchartedW0rld — ${series.name} (${series.key}) ===`);
+  log(`=== Wild Anomalies — ${series.name} (${series.key}) ===`);
   log(
     `Profile: voice=${voice.label} (fixed) | tone=${tone.label} (rate ${tone.rate}, pitch ${tone.pitch}) | structure=${structure.label} (${structure.key}) | thumb=${thumbLayout} | sub-theme="${subTheme}" | target=${TARGET_MINUTES}min`,
   );

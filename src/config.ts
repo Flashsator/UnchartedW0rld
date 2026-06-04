@@ -55,7 +55,7 @@ export const YT_CHANNEL_ID = process.env.YT_CHANNEL_ID ?? '';
 // URL (not the @handle), so it is hard-coded here against the canonical ID.
 export const CHANNEL_FOOTER = [
   '━━━━━━━━━━━━━━━',
-  '📺 UnchartedW0rld investigates the strangest true stories from the living world — animals, insects, and plants that quietly break biology — one short, cinematic case file at a time. New documentary every Monday (animals), Wednesday (insects) and Saturday (plants).',
+  '📺 Wild Anomalies investigates the strangest true stories from the living world — animals, insects, and plants that quietly break biology — one short, cinematic case file at a time. New documentary every Monday (animals), Wednesday (insects) and Saturday (plants).',
   '👉 Subscribe: https://www.youtube.com/channel/UCKj9-3uGF11Xw9kJbNl9GvQ?sub_confirmation=1',
 ].join('\n');
 
