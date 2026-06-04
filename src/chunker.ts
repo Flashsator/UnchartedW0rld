@@ -4,6 +4,10 @@ export type Cue = {
   start: number;
   end: number;
   text: string;
+  // The individual words that make up this cue, with their own timings, so the
+  // renderer can highlight the currently-spoken word (karaoke). The joined
+  // `text` is kept for plain consumers (SRT export, tests).
+  words: WordTiming[];
 };
 
 const MAX_WORDS = 4;
@@ -41,6 +45,7 @@ export function chunkWords(words: WordTiming[]): Cue[] {
         start: bucket[0]!.start,
         end: bucket[bucket.length - 1]!.end,
         text,
+        words: bucket,
       });
       bucket = [];
     }
@@ -52,6 +57,7 @@ export function chunkWords(words: WordTiming[]): Cue[] {
       start: bucket[0]!.start,
       end: bucket[bucket.length - 1]!.end,
       text,
+      words: bucket,
     });
   }
 
