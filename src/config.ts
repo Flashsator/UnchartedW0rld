@@ -52,11 +52,19 @@ export const YT_CHANNEL_ID = process.env.YT_CHANNEL_ID ?? '';
 // Appended to every long-form description (after chapters, before attribution)
 // so each video carries a consistent channel pitch + subscribe CTA. The
 // ?sub_confirmation=1 link only opens the subscribe prompt on a /channel/UC...
-// URL (not the @handle), so it is hard-coded here against the canonical ID.
+// URL (not the @handle). The channel ID comes from YT_CHANNEL_ID (env/secret),
+// not hard-coded, so a public repo clone can't be trivially linked to the
+// channel. If the env is unset the CTA falls back to URL-less text rather than
+// shipping a broken link.
+const SUBSCRIBE_URL = YT_CHANNEL_ID
+  ? `https://www.youtube.com/channel/${YT_CHANNEL_ID}?sub_confirmation=1`
+  : '';
 export const CHANNEL_FOOTER = [
   '━━━━━━━━━━━━━━━',
   '📺 Wild Anomalies investigates the strangest true stories from the living world — animals, insects, and plants that quietly break biology — one short, cinematic case file at a time. New documentary every Monday (animals), Wednesday (insects) and Saturday (plants).',
-  '👉 Subscribe: https://www.youtube.com/channel/UCKj9-3uGF11Xw9kJbNl9GvQ?sub_confirmation=1',
+  SUBSCRIBE_URL
+    ? `👉 Subscribe: ${SUBSCRIBE_URL}`
+    : '👉 Subscribe for a new documentary every Monday, Wednesday and Saturday.',
 ].join('\n');
 
 export const CLAUDE_MODEL = 'claude-sonnet-4-6';
