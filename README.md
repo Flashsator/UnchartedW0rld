@@ -97,7 +97,7 @@ npm run studio                 # open Remotion Studio to iterate on visuals
 
 ## Cloud automation
 
-- Schedule is driven by the **Cloudflare Worker** in `cloudflare-trigger/` (cron `0 13 * * 1,3,6`), which dispatches `daily.yml` via a fine-grained GitHub PAT (Actions-only write, scoped to this repo). The PAT lives only in Cloudflare's encrypted secret store.
+- Schedule is driven by the **Cloudflare Worker** in `cloudflare-trigger/` (cron `0 13 * * 1,3,5`), which dispatches `daily.yml` via a fine-grained GitHub PAT (Actions-only write, scoped to this repo). The PAT lives only in Cloudflare's encrypted secret store.
 - `daily.yml` (`timeout-minutes: 240`, `runs-on: ubuntu-latest`) installs ffmpeg, Chromium, fonts, and Remotion, then runs the pipeline end-to-end. Can also be triggered manually from the Actions tab.
 
 ## Repo layout
