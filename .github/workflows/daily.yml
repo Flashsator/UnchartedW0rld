@@ -1,9 +1,20 @@
 name: Daily video
 
 on:
-  # Scheduling is handled by the Cloudflare Worker in cloudflare-trigger/, which
-  # fires workflow_dispatch on time (sub-minute jitter). GitHub's own schedule:
-  # cron was removed because it was delayed by hours under peak load.
+  # PRIMARY scheduling is the Cloudflare Worker in cloudflare-trigger/, which
+  # fires workflow_dispatch at 13:00 UTC (sub-minute jitter) for punctual
+  # ~21:00 Taiwan publishing.
+  #
+  # BACKUP: GitHub's own schedule cron below. It was originally removed because
+  # it lands hours late under peak load — but on 2026-06-06 the CF cron silently
+  # failed to fire at all (no invocation on either side), which is far worse than
+  # being late. So GitHub cron is back purely as a safety net, offset to 15:30 UTC
+  # so the CF run (13:00, <=88min) has finished and recorded the daily upload lock
+  # first. On a normal day the lock (cached in work/.last-upload-date) + the
+  # `daily-video` concurrency group make this backup exit early before any render,
+  # so it only ever publishes when the CF trigger missed entirely.
+  schedule:
+    - cron: '30 15 * * 1,3,6'  # Mon/Wed/Sat 15:30 UTC — backup only; see note above
   workflow_dispatch:
     inputs:
       series_key:
