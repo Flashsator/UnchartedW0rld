@@ -27,7 +27,7 @@ export function planShortsForToday(weekdayUtc: number): ShortsPlanEntry[] {
         { sectionIdx: 0, daysAhead: 1 },
         { sectionIdx: 4, daysAhead: 2 },
       ];
-    case 6:
+    case 5:
       return [{ sectionIdx: 0, daysAhead: 1 }];
     default:
       return [];

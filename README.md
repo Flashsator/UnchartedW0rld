@@ -12,9 +12,9 @@ Three videos per week on a **fixed weekday → topic** mapping, anchored to **Ta
 |---|---|---|---|---|
 | 週一 (Mon) | 動物 Animals | Beast Codex (`animals`) | 21:00 | 13:00 |
 | 週三 (Wed) | 昆蟲 Insects | Tiny Titans (`insects`) | 21:00 | 13:00 |
-| 週六 (Sat) | 植物 Plants | Rooted Anomalies (`plants`) | 21:00 | 13:00 |
+| 週五 (Fri) | 植物 Plants | Rooted Anomalies (`plants`) | 21:00 | 13:00 |
 
-The schedule is fired by a **Cloudflare Worker cron** (`0 13 * * 1,3,6` UTC), which dispatches `daily.yml` via the GitHub REST API — more reliable than GitHub's own `schedule:` cron. See `cloudflare-trigger/`.
+The schedule is fired by a **Cloudflare Worker cron** (`0 13 * * 1,3,5` UTC), which dispatches `daily.yml` via the GitHub REST API — more reliable than GitHub's own `schedule:` cron. A GitHub native `schedule:` cron (`30 15 * * 1,3,5` UTC) runs as a backup in case the Cloudflare trigger misses. See `cloudflare-trigger/`.
 
 ## Series
 
@@ -24,7 +24,7 @@ The channel is narrowed to the **living-world trio**, one topic per publish day 
 |---|---|---|---|
 | Beast Codex | Animals | `animals` | ✅ Mon |
 | Tiny Titans | Insects & micro life | `insects` | ✅ Wed |
-| Rooted Anomalies | Carnivorous / parasitic / chemical-warfare plants | `plants` | ✅ Sat |
+| Rooted Anomalies | Carnivorous / parasitic / chemical-warfare plants | `plants` | ✅ Fri |
 | Wild Earth Files | Nature & ecosystems | `nature` | — kept, inactive |
 | Abyss Unknown | Deep sea | `ocean` | — kept, inactive |
 | Cosmic Anomalies | Space & physics | `cosmos` | — kept, inactive |
@@ -90,7 +90,7 @@ Copy `.env.example` to `.env` and fill in every value. Never commit `.env`.
 ```sh
 DRY_RUN=1 npm run run          # local dry-run, no upload
 npm run run                    # full run, uploads as scheduled-private
-WEEKDAY=6 DRY_RUN=1 npm run run # force a specific weekday's series (Sat = plants)
+WEEKDAY=5 DRY_RUN=1 npm run run # force a specific weekday's series (Fri = plants)
 SERIES_KEY=cosmos npm run run  # force any series (override the weekday map)
 npm run studio                 # open Remotion Studio to iterate on visuals
 ```

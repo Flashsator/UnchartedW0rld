@@ -61,10 +61,10 @@ const SUBSCRIBE_URL = YT_CHANNEL_ID
   : '';
 export const CHANNEL_FOOTER = [
   '━━━━━━━━━━━━━━━',
-  '📺 Wild Anomalies investigates the strangest true stories from the living world — animals, insects, and plants that quietly break biology — one short, cinematic case file at a time. New documentary every Monday (animals), Wednesday (insects) and Saturday (plants).',
+  '📺 Wild Anomalies investigates the strangest true stories from the living world — animals, insects, and plants that quietly break biology — one short, cinematic case file at a time. New documentary every Monday (animals), Wednesday (insects) and Friday (plants).',
   SUBSCRIBE_URL
     ? `👉 Subscribe: ${SUBSCRIBE_URL}`
-    : '👉 Subscribe for a new documentary every Monday, Wednesday and Saturday.',
+    : '👉 Subscribe for a new documentary every Monday, Wednesday and Friday.',
 ].join('\n');
 
 export const CLAUDE_MODEL = 'claude-sonnet-4-6';
@@ -122,10 +122,10 @@ export const DRY_RUN = process.env.DRY_RUN === '1';
 // genuine same-day re-publish). Set via the workflow_dispatch `force` input.
 export const FORCE_RUN = process.env.FORCE_RUN === '1';
 
-// UTC weekdays we publish on. 0=Sun, 1=Mon, ..., 6=Sat. Mon/Wed/Sat.
+// UTC weekdays we publish on. 0=Sun, 1=Mon, ..., 6=Sat. Mon/Wed/Fri.
 // Documents the cadence (the actual trigger is the Cloudflare cron); each of
 // these days is assigned a topic by WEEKDAY_SERIES_MAP below.
-export const PUBLISH_WEEKDAYS_UTC: readonly number[] = [1, 3, 6];
+export const PUBLISH_WEEKDAYS_UTC: readonly number[] = [1, 3, 5];
 
 export type Voice = {
   id: string;
@@ -349,13 +349,13 @@ export const ACTIVE_SERIES_POOL: Series[] = SERIES_POOL.filter((s) =>
 );
 
 // Fixed weekday → series mapping. Each publish day owns one topic so the slate
-// reads as themed days: Mon = animals, Wed = insects, Sat = plants. Keys must
+// reads as themed days: Mon = animals, Wed = insects, Fri = plants. Keys must
 // be a subset of ACTIVE_SERIES_KEYS. Weekdays use UTC (0=Sun … 6=Sat) to match
 // PUBLISH_WEEKDAYS_UTC.
 export const WEEKDAY_SERIES_MAP: Readonly<Record<number, string>> = {
   1: 'animals',
   3: 'insects',
-  6: 'plants',
+  5: 'plants',
 };
 
 export type HookPattern = { name: string; example: string; rule: string };
@@ -659,7 +659,7 @@ export function pickThumbLayout(): ThumbLayout {
 // --- Series rotation ---------------------------------------------------------
 // Fixed weekday schedule (themed days). Each UTC publish day maps to exactly
 // one active series via WEEKDAY_SERIES_MAP: Mon = animals, Wed = insects,
-// Sat = plants. Deterministic, state-free, trivially testable. Overrides:
+// Fri = plants. Deterministic, state-free, trivially testable. Overrides:
 //   - SERIES_KEY env: trending-event injection — forces any defined series.
 //   - WEEKDAY env: forces a specific UTC weekday's mapping (manual dispatch).
 // A non-publish-day manual run with no override falls back to a day-of-month

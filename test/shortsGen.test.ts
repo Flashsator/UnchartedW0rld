@@ -7,18 +7,18 @@ beforeEach(() => {
   delete process.env.SHORTS_PLAN_WEEKDAY;
 });
 
-test('long-video days drip shorts onto the off days (Mon/Wed/Sat)', () => {
-  // Mon(1) -> Tue, Wed(3) -> Thu+Fri, Sat(6) -> Sun. Together: 2,4,5,7 each covered.
+test('long-video days drip shorts onto the off days (Mon/Wed/Fri)', () => {
+  // Mon(1) -> Tue, Wed(3) -> Thu+Fri, Fri(5) -> Sat.
   assert.deepEqual(planShortsForToday(1), [{ sectionIdx: 0, daysAhead: 1 }]);
   assert.deepEqual(planShortsForToday(3), [
     { sectionIdx: 0, daysAhead: 1 },
     { sectionIdx: 4, daysAhead: 2 },
   ]);
-  assert.deepEqual(planShortsForToday(6), [{ sectionIdx: 0, daysAhead: 1 }]);
+  assert.deepEqual(planShortsForToday(5), [{ sectionIdx: 0, daysAhead: 1 }]);
 });
 
 test('non-long-video days schedule nothing themselves', () => {
-  for (const wd of [0, 2, 4, 5]) {
+  for (const wd of [0, 2, 4, 6]) {
     assert.deepEqual(planShortsForToday(wd), [], `weekday ${wd} should be empty`);
   }
 });
