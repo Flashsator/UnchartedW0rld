@@ -72,7 +72,12 @@ export const TEST_MODE = process.env.TEST_MODE === '1';
 function pickTargetMinutes(): number {
   if (process.env.TARGET_MINUTES) return Number(process.env.TARGET_MINUTES);
   if (TEST_MODE) return 1;
-  const range = [8.5, 9.0];
+  // The 150-wpm assumption below under-estimates the real TTS rate (~178 wpm),
+  // so the finished video lands ~7% short of the target minutes. We need the
+  // final cut to clear 8:00 for YouTube mid-roll ads, so target high enough that
+  // even the fast end of the rate range stays comfortably above 8 minutes
+  // (9.5-10.0 target → ~8:50-9:18 final). Raising word count, not padding.
+  const range = [9.5, 10.0];
   return range[Math.floor(Math.random() * range.length)]!;
 }
 
