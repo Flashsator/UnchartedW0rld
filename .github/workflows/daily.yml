@@ -44,6 +44,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The render step (Remotion + Chromium) needs lots of scratch space for
+      # downloaded b-roll mp4s and frame output. ubuntu-latest ships only ~14 GB
+      # free on /, which the b-roll + deps exhausted mid-render ("Chrome rejecting
+      # the request because the disk space is low"). Drop preinstalled toolchains
+      # we never use to reclaim ~25-30 GB before anything downloads. Quality of the
+      # video is untouched — this only removes unrelated SDKs from the runner image.
+      - name: Free up disk space
+        run: |
+          echo "Disk before cleanup:"; df -h /
+          sudo rm -rf /usr/local/lib/android       # ~9 GB Android SDK/NDK
+          sudo rm -rf /usr/share/dotnet            # ~1.6 GB .NET
+          sudo rm -rf /opt/ghc /usr/local/.ghcup   # ~6 GB Haskell
+          sudo rm -rf /usr/local/share/boost       # ~1 GB Boost
+          sudo rm -rf /opt/hostedtoolcache/CodeQL  # ~6 GB CodeQL
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"      # leftover toolcache
+          sudo docker image prune --all --force || true
+          sudo apt-get clean
+          echo "Disk after cleanup:"; df -h /
+
       - name: Setup Node 20
         uses: actions/setup-node@v4
         with:
