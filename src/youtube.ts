@@ -117,9 +117,11 @@ export async function uploadVideo(
   let title = episode.title.slice(0, 100);
   let description = episode.description;
   if (opts.isShorts) {
-    if (!title.toLowerCase().includes('#shorts')) {
-      title = `${truncate(title, 92)} #Shorts`;
-    }
+    // Deliberately do NOT append "#Shorts" to the title — Shorts are classified
+    // by vertical ratio + duration, so the hashtag adds no reach and only eats
+    // hook space. Strip it if an upstream title still carries it. Description
+    // keeps its hashtags (see shortsDescription).
+    title = title.replace(/\s*#shorts\b/gi, '').slice(0, 100);
     description = shortsDescription(episode, opts.longVideoId, opts.musicCredit);
   }
 

@@ -135,7 +135,10 @@ export function buildShortsManifest(
   );
 
   const hookText = entry.sectionIdx === 0 ? long.hook : section.heading;
-  const shortsTitle = truncate(`${hookText} #Shorts`, 100);
+  // No "#Shorts" in the title — YouTube classifies Shorts by vertical ratio +
+  // duration, not the hashtag, so it only wastes title space that should be a
+  // pure curiosity hook. (Description still carries hashtags.)
+  const shortsTitle = truncate(hookText, 100);
 
   const overlays = section.overlays
     ? section.overlays.filter((o) =>
