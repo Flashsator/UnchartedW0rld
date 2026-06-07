@@ -72,7 +72,71 @@ function ProtectionBlock({ width, height }: { width: number; height: number }) {
   );
 }
 
-function StatBody({ overlay }: { overlay: SectionOverlay }) {
+// --- count-up number animation -------------------------------------------
+// Stat cards and compare bars animate their figure from 0 up to the real value
+// as the card reveals, so the data reads as a beat instead of a static number.
+// Only the spoken value is ever shown — counting changes presentation, not data.
+function easeOutCubic(p: number): number {
+  const c = Math.max(0, Math.min(1, p));
+  return 1 - Math.pow(1 - c, 3);
+}
+
+function groupThousands(intPart: string): string {
+  const neg = intPart.startsWith('-');
+  const digits = neg ? intPart.slice(1) : intPart;
+  const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return neg ? `-${grouped}` : grouped;
+}
+
+type ParsedStat = {
+  prefix: string;
+  suffix: string;
+  value: number;
+  decimals: number;
+  grouped: boolean;
+};
+
+// Pulls the numeric core out of a stat string ("$1,200", "47%", "1986"),
+// keeping any non-numeric prefix/suffix so it can be re-attached each frame.
+function parseStatNumber(text: string): ParsedStat | null {
+  const m = text.match(/^(\D*?)(-?\d[\d,]*(?:\.\d+)?)(.*)$/s);
+  if (!m) return null;
+  const numStr = m[2] ?? '';
+  const cleaned = numStr.replace(/,/g, '');
+  const value = Number(cleaned);
+  if (!Number.isFinite(value)) return null;
+  const dot = cleaned.indexOf('.');
+  return {
+    prefix: m[1] ?? '',
+    suffix: m[3] ?? '',
+    value,
+    decimals: dot >= 0 ? cleaned.length - dot - 1 : 0,
+    grouped: numStr.includes(','),
+  };
+}
+
+function renderCount(parsed: ParsedStat, progress: number): string {
+  const current = parsed.value * easeOutCubic(progress);
+  const [intPart, frac] = current.toFixed(parsed.decimals).split('.');
+  const grouped = parsed.grouped ? groupThousands(intPart!) : intPart!;
+  const body = frac !== undefined ? `${grouped}.${frac}` : grouped;
+  return `${parsed.prefix}${body}${parsed.suffix}`;
+}
+
+// Stat-card text: counts the embedded number, leaving $/%/+ intact. A stat with
+// no parseable number (rare) renders unchanged.
+function animatedStatText(text: string, progress: number): string {
+  const parsed = parseStatNumber(text);
+  return parsed ? renderCount(parsed, progress) : text;
+}
+
+// Compare-bar value: a plain number, grouped once it reaches the thousands.
+function animatedNumber(value: number, progress: number): string {
+  const decimals = Number.isInteger(value) ? 0 : (String(value).split('.')[1]?.length ?? 0);
+  return renderCount({ prefix: '', suffix: '', value, decimals, grouped: value >= 1000 }, progress);
+}
+
+function StatBody({ overlay, progress }: { overlay: SectionOverlay; progress: number }) {
   return (
     <div style={{ position: 'relative', width: 540, padding: '32px 36px' }}>
       <ProtectionBlock width={540} height={260} />
@@ -86,9 +150,10 @@ function StatBody({ overlay }: { overlay: SectionOverlay }) {
             lineHeight: 1,
             color: TEXT_PRIMARY,
             letterSpacing: '-0.02em',
+            fontVariantNumeric: 'tabular-nums',
           }}
         >
-          {overlay.text}
+          {animatedStatText(overlay.text, progress)}
         </div>
         {overlay.subtext ? (
           <div
@@ -177,15 +242,30 @@ function CompareBody({ overlay, fillProgress }: { overlay: SectionOverlay; fillP
           {overlay.compareLabel ?? ''}
         </div>
         <div style={{ width: '100%', height: 2, background: ACCENT, marginTop: 14, marginBottom: 28 }} />
-        <CompareRow label={overlay.text} pct={leftPct} />
+        <CompareRow label={overlay.text} pct={leftPct} value={leftV} progress={fillProgress} />
         <div style={{ height: 18 }} />
-        <CompareRow label={overlay.compareWith ?? ''} pct={rightPct} />
+        <CompareRow
+          label={overlay.compareWith ?? ''}
+          pct={rightPct}
+          value={rightV}
+          progress={fillProgress}
+        />
       </div>
     </div>
   );
 }
 
-function CompareRow({ label, pct }: { label: string; pct: number }) {
+function CompareRow({
+  label,
+  pct,
+  value,
+  progress,
+}: {
+  label: string;
+  pct: number;
+  value: number;
+  progress: number;
+}) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
       <div
@@ -211,6 +291,20 @@ function CompareRow({ label, pct }: { label: string; pct: number }) {
             background: ACCENT,
           }}
         />
+      </div>
+      <div
+        style={{
+          width: 96,
+          textAlign: 'right',
+          fontFamily: '"Inter", "Helvetica Neue", system-ui, sans-serif',
+          fontWeight: 800,
+          fontSize: 30,
+          color: TEXT_PRIMARY,
+          fontVariantNumeric: 'tabular-nums',
+          letterSpacing: '0.01em',
+        }}
+      >
+        {animatedNumber(value, progress)}
       </div>
     </div>
   );
@@ -275,7 +369,7 @@ export function OverlayLayer({ overlays, words, sectionIdx }: OverlayLayerProps)
               transform: `translateY(${drift}px)`,
             }}
           >
-            {r.overlay.kind === 'stat' ? <StatBody overlay={r.overlay} /> : null}
+            {r.overlay.kind === 'stat' ? <StatBody overlay={r.overlay} progress={fillProgress} /> : null}
             {r.overlay.kind === 'label' ? <LabelBody overlay={r.overlay} /> : null}
             {r.overlay.kind === 'compare' ? (
               <CompareBody overlay={r.overlay} fillProgress={fillProgress} />
