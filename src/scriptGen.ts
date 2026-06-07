@@ -138,9 +138,11 @@ Shape:
 
 Overlay Rules (CRITICAL):
 - ONLY sections at index 2, 3, 4, 5 may include overlays. Sections 0, 1, 6 MUST NOT include the "overlays" field at all (omit the key entirely).
-- Each overlay is one of two kinds:
+- Each overlay is one of three kinds:
   * { "kind": "stat", "triggerWord": "<single word from this section's narration>", "text": "<short value, e.g., '47%', '1986', '12,000'>", "subtext": "<2-5 word context, e.g., 'OF FOSSILS MISIDENTIFIED'>" }
   * { "kind": "label", "triggerWord": "<single word from this section's narration>", "text": "<proper noun or term, e.g., 'TROGLORAPTOR'>", "subtext": "<short meta, e.g., 'genus · 2010'>" }
+  * { "kind": "compare", "triggerWord": "<single word from this section's narration>", "compareLabel": "<2-3 word unit/metric title, e.g., 'VENOM (MG)'>", "text": "<left side label, e.g., 'JUVENILE'>", "compareWith": "<right side label, e.g., 'ADULT'>", "compareLeftValue": <real number stated in this section's narration>, "compareRightValue": <real number stated in this section's narration> }
+- Use "compare" ONLY when the narration states TWO real numbers that measure the SAME thing in the SAME unit, so the bars are an honest proportion. compareLeftValue and compareRightValue MUST each appear verbatim as a number in this section's narration. If you do not have two such real numbers, use "stat" instead — never fabricate magnitudes to fill a bar.
 - "triggerWord" MUST be an exact word that appears verbatim in that section's narration text (case-insensitive). Pick a meaningful word, not a generic one like "the" or "and".
 - Maximum 2 overlays per section. Prefer 1 overlay if there is only one strong data point.
 - An overlay may ONLY surface a number, percentage, date, name, or term that is actually stated in that section's narration. NEVER invent a figure, magnitude, or comparison value — no made-up percentages, no fabricated "X vs Y" bars. If the exact value is not spoken in the narration, do not create the overlay.
@@ -310,21 +312,54 @@ function toHashtag(tag: string): string {
 
 const OVERLAY_ALLOWED_SECTIONS = new Set([2, 3, 4, 5]);
 
+// Every numeric figure spoken in the narration, normalized so "12,000", "47%"
+// and "1850." all reduce to a bare comparable form ("12000", "47", "1850").
+// Used to keep compare-overlay bar magnitudes honest: the model may only chart
+// numbers it actually said, never invented 1-100 placeholders.
+function spokenNumbers(narration: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of narration.matchAll(/\d[\d,]*(?:\.\d+)?/g)) {
+    const cleaned = m[0].replace(/,/g, '');
+    const n = Number(cleaned);
+    if (Number.isFinite(n)) out.add(String(n));
+  }
+  return out;
+}
+
 function sanitizeOverlay(raw: unknown, narration: string): SectionOverlay | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   const kind = typeof o.kind === 'string' ? o.kind : '';
-  // "compare" overlays carried invented 1-100 bar magnitudes (e.g. "YOUNG 20 /
-  // OLD 90 TOXICITY") that read like measured data but were fabricated by the
-  // model. The kind is dropped — stat/label both surface a value that must
-  // appear in the narration. Reject any compare the model still emits.
-  if (kind !== 'stat' && kind !== 'label') return null;
+  if (kind !== 'stat' && kind !== 'label' && kind !== 'compare') return null;
   const triggerWord = typeof o.triggerWord === 'string' ? o.triggerWord.trim() : '';
   const text = typeof o.text === 'string' ? o.text.trim() : '';
   if (!triggerWord || !text) return null;
   const narrationLower = narration.toLowerCase();
   if (!narrationLower.includes(triggerWord.toLowerCase())) return null;
   const subtext = typeof o.subtext === 'string' ? o.subtext.trim() : undefined;
+  if (kind === 'compare') {
+    const compareWith = typeof o.compareWith === 'string' ? o.compareWith.trim() : '';
+    const compareLabel = typeof o.compareLabel === 'string' ? o.compareLabel.trim() : '';
+    const leftV = Number(o.compareLeftValue);
+    const rightV = Number(o.compareRightValue);
+    if (!compareWith || !compareLabel) return null;
+    if (!Number.isFinite(leftV) || !Number.isFinite(rightV)) return null;
+    if (leftV < 0 || rightV < 0) return null;
+    // Both bar magnitudes must be real figures the narration actually states —
+    // this is what stops the "YOUNG 20 / OLD 90" style fabricated bars. If
+    // either value was invented, drop the overlay rather than chart a lie.
+    const nums = spokenNumbers(narration);
+    if (!nums.has(String(leftV)) || !nums.has(String(rightV))) return null;
+    return {
+      kind: 'compare',
+      triggerWord,
+      text,
+      compareWith,
+      compareLabel,
+      compareLeftValue: leftV,
+      compareRightValue: rightV,
+    };
+  }
   return { kind, triggerWord, text, subtext };
 }
 

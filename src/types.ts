@@ -1,8 +1,14 @@
 export type SectionOverlay = {
-  kind: 'stat' | 'label';
+  kind: 'stat' | 'label' | 'compare';
   triggerWord: string;
   text: string;
   subtext?: string;
+  // compare-only: the bar magnitudes are real figures the sanitizer has
+  // confirmed appear verbatim in the narration (never model-invented values).
+  compareLabel?: string;
+  compareWith?: string;
+  compareLeftValue?: number;
+  compareRightValue?: number;
   holdSec?: number;
 };
 
