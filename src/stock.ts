@@ -281,15 +281,23 @@ async function makeKenBurnsClip(
   }
 }
 
-export async function fetchBroll(
+// Monotonic counter so concurrent/repeat queries never collide on a cached
+// filename (Date.now() alone can repeat within a millisecond on fast disks).
+let brollSeq = 0;
+
+// Fetches up to `count` distinct clips for a single stock query: video providers
+// first (Pexels/Pixabay/Coverr), then Unsplash Ken Burns stills to fill any gap.
+// Records contributing sources for attribution and dedupes against usedUrls so a
+// clip never repeats across beats or sections. Returns however many it found
+// (possibly fewer than count, possibly zero for an obscure query).
+async function fetchClipsForQuery(
   query: string,
-  sectionDuration: number,
-  workDir: string,
+  count: number,
+  cacheDir: string,
   usedUrls: Set<string>,
   sourcesUsed?: Set<string>,
 ): Promise<BrollClip[]> {
-  const cacheDir = ensureDir(path.join(workDir, 'broll'));
-  const needed = Math.max(1, Math.ceil(sectionDuration / BROLL_CLIP_SEC));
+  if (count <= 0) return [];
 
   const [pexels, pixabay, coverr] = await Promise.all([
     searchPexels(query),
@@ -307,9 +315,9 @@ export async function fetchBroll(
 
   const clips: BrollClip[] = [];
   for (const { url, source } of pool) {
-    if (clips.length >= needed) break;
+    if (clips.length >= count) break;
     try {
-      const name = safeFilename(`${query}_${clips.length}_${Date.now()}.mp4`);
+      const name = safeFilename(`${query}_${brollSeq++}_${Date.now()}.mp4`);
       const dest = path.join(cacheDir, name);
       await downloadFile(url, dest);
       const dur = await ffprobeDuration(dest);
@@ -327,11 +335,11 @@ export async function fetchBroll(
 
   // Still short after exhausting the video providers? Fill the remaining slots
   // with Unsplash Ken Burns stills so the section never replays the same clip.
-  if (clips.length < needed && UNSPLASH_ACCESS_KEY) {
+  if (clips.length < count && UNSPLASH_ACCESS_KEY) {
     const photos = shuffle(await searchUnsplash(query)).filter((u) => !usedUrls.has(u));
     for (const photoUrl of photos) {
-      if (clips.length >= needed) break;
-      const clip = await makeKenBurnsClip(photoUrl, query, cacheDir, clips.length);
+      if (clips.length >= count) break;
+      const clip = await makeKenBurnsClip(photoUrl, query, cacheDir, brollSeq++);
       if (!clip) continue;
       usedUrls.add(photoUrl);
       sourcesUsed?.add('Unsplash');
@@ -340,9 +348,87 @@ export async function fetchBroll(
     }
   }
 
+  return clips;
+}
+
+// Splits `needed` clips across `beatCount` ordered beats as evenly as possible,
+// giving the earlier beats the remainder so narration order is preserved. Pure
+// and exported for testing. e.g. allocate(7, 3) -> [3, 2, 2].
+export function allocateClipsAcrossBeats(needed: number, beatCount: number): number[] {
+  if (beatCount <= 0) return [];
+  const base = Math.floor(needed / beatCount);
+  const rem = needed % beatCount;
+  return Array.from({ length: beatCount }, (_, i) => base + (i < rem ? 1 : 0));
+}
+
+export async function fetchBroll(
+  query: string,
+  sectionDuration: number,
+  workDir: string,
+  usedUrls: Set<string>,
+  sourcesUsed?: Set<string>,
+): Promise<BrollClip[]> {
+  const cacheDir = ensureDir(path.join(workDir, 'broll'));
+  const needed = Math.max(1, Math.ceil(sectionDuration / BROLL_CLIP_SEC));
+  const clips = await fetchClipsForQuery(query, needed, cacheDir, usedUrls, sourcesUsed);
   if (clips.length === 0) {
     throw new Error(
       `No b-roll for query "${query}" — check Pexels/Pixabay/Coverr/Unsplash API keys`,
+    );
+  }
+  return clips;
+}
+
+// Fetches footage that tracks the narration beat by beat. `beats` is an ordered
+// list of stock queries (one per narration moment). The total clip count is
+// still sized to the section duration so the cut rhythm matches a single-query
+// section, but it is distributed across the beats IN ORDER — so each shot
+// depicts what is being said at that point in the narration. Beats whose query
+// comes up short are topped up by re-querying the remaining beats in order.
+export async function fetchBrollForBeats(
+  beats: string[],
+  sectionDuration: number,
+  workDir: string,
+  usedUrls: Set<string>,
+  sourcesUsed?: Set<string>,
+): Promise<BrollClip[]> {
+  const cacheDir = ensureDir(path.join(workDir, 'broll'));
+  const queries = beats.map((b) => b.trim()).filter(Boolean);
+  if (queries.length === 0) {
+    throw new Error('fetchBrollForBeats called with no queries');
+  }
+  // At least one clip per beat, but never fewer than the duration would need.
+  const needed = Math.max(queries.length, Math.ceil(sectionDuration / BROLL_CLIP_SEC));
+  const allocation = allocateClipsAcrossBeats(needed, queries.length);
+
+  const clips: BrollClip[] = [];
+  for (let i = 0; i < queries.length; i++) {
+    const got = await fetchClipsForQuery(
+      queries[i]!,
+      allocation[i]!,
+      cacheDir,
+      usedUrls,
+      sourcesUsed,
+    );
+    clips.push(...got);
+  }
+
+  // Some beat queries can come up short (obscure scenes). Top back up to the
+  // duration-based count by re-querying beats in order, holding the cut pace.
+  for (let i = 0; i < queries.length && clips.length < needed; i++) {
+    const got = await fetchClipsForQuery(
+      queries[i]!,
+      needed - clips.length,
+      cacheDir,
+      usedUrls,
+      sourcesUsed,
+    );
+    clips.push(...got);
+  }
+
+  if (clips.length === 0) {
+    throw new Error(
+      `No b-roll for any beat of [${queries.join(' | ')}] — check stock API keys`,
     );
   }
   return clips;

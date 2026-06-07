@@ -16,6 +16,12 @@ export type ScriptSection = {
   heading: string;
   narration: string;
   visual: string;
+  // Ordered b-roll "shot beats" for this section: one short stock-search query
+  // per narration moment, in spoken order, each anchored to the episode subject.
+  // The pipeline fetches footage beat-by-beat so the on-screen shots track what
+  // the narration is actually saying moment to moment, instead of one query for
+  // the whole section. Falls back to [visual] when the model omits it.
+  visuals?: string[];
   overlays?: SectionOverlay[];
 };
 

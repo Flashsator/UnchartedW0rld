@@ -23,7 +23,7 @@ import {
 } from './config.js';
 import { generateEpisode, generateShortsBlurb } from './scriptGen.js';
 import { synthesize } from './tts.js';
-import { fetchAmbient, fetchBgm, fetchBroll } from './stock.js';
+import { fetchAmbient, fetchBgm, fetchBroll, fetchBrollForBeats } from './stock.js';
 import { makeThumbnail } from './thumbnail.js';
 import { renderVideo, renderShorts } from './render.js';
 import { buildChapters, muxAudio, muxShortsAudio, writeSrt } from './mux.js';
@@ -102,8 +102,15 @@ async function main(): Promise<void> {
   // description credits only the sources truly used (not just the ones enabled).
   const footageUsed = new Set<string>();
   const broll: string[][] = [];
-  for (const sec of sectionAudios) {
-    const clips = await fetchBroll(sec.visual, sec.duration, runDir, used, footageUsed);
+  for (let i = 0; i < sectionAudios.length; i++) {
+    const sec = sectionAudios[i]!;
+    // Ordered per-beat shot list (subject-anchored in scriptGen) so footage
+    // tracks the narration moment to moment; falls back to the single summary
+    // query when the script model didn't provide beats.
+    const beats = episode.sections[i]?.visuals?.length
+      ? episode.sections[i]!.visuals!
+      : [sec.visual];
+    const clips = await fetchBrollForBeats(beats, sec.duration, runDir, used, footageUsed);
     broll.push(clips.map((c) => relAsset(runDir, c.path)));
   }
 

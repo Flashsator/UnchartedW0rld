@@ -130,7 +130,8 @@ Shape:
     {
       "heading": "string, 3-6 words, what this beat is about",
       "narration": "string, ${wordsLo}-${wordsHi} words, ${structure.label} tone, no stage directions, no 'in this video', read aloud as natural English",
-      "visual": "string, 6-12 words for this section's b-roll stock-footage search. MUST start with the episode \"subject\" so the footage shows it, then add this beat's scene/action/setting. e.g. subject 'cave spider' -> 'cave spider crawling on wet rock in dark cave'. NEVER an abstract or tangential query that drops the subject (no bare 'old library', 'laboratory', 'starry sky', 'flowing data').",
+      "visual": "string, 6-12 words — a SINGLE summary b-roll query for this whole section (subject + the section's main scene). Used as the cold-open shot and a fallback. MUST start with the episode \"subject\". e.g. subject 'cave spider' -> 'cave spider crawling on wet rock in dark cave'. NEVER an abstract or tangential query that drops the subject (no bare 'old library', 'laboratory', 'starry sky', 'flowing data').",
+      "visuals": ["3-6 strings, ORDERED to match this section's narration beat by beat. Split the narration into its successive moments and write ONE 6-12 word b-roll stock query per moment, in the SAME order they are spoken, so the footage shows what is being said as it is said. Each MUST start with the episode \"subject\", then that moment's scene/action/setting. e.g. narration goes rest -> feed -> attack, so visuals = ['cave spider resting in a dark rock crevice','cave spider wrapping a moth in silk','cave spider lunging at prey in the dark']. Cover the whole section in order; never drop the subject; no abstract or tangential shots."],
       "overlays": "optional array, 0-2 items, ONLY for sections 2, 3, 4, 5 — see Overlay Rules below"
     }
   ]
@@ -154,7 +155,8 @@ Rules:
 - Never break the fourth wall ("welcome back", "in today's video", "don't forget to subscribe" — handled separately).
 - Cite specific numbers, species, places, dates where they sharpen the story.
 - No emoji, no markdown inside narration.
-- B-ROLL RELEVANCE (CRITICAL): every section's "visual" query must keep the "subject" visible. Lead each query with the subject noun, then vary the scene, action, or setting. The viewer should SEE the subject in most shots — not unrelated stock footage. If a beat is about history/discovery/data, still anchor on the subject (e.g. 'cave spider specimen under museum glass'), never a generic 'old archive' shot that drops it.
+- B-ROLL RELEVANCE (CRITICAL): every "visual" and every "visuals" entry must keep the "subject" visible. Lead each query with the subject noun, then vary the scene, action, or setting. The viewer should SEE the subject in most shots — not unrelated stock footage. If a beat is about history/discovery/data, still anchor on the subject (e.g. 'cave spider specimen under museum glass'), never a generic 'old archive' shot that drops it.
+- SHOT-BY-SHOT (CRITICAL): "visuals" must walk this section's narration in order — the first entry depicts what is said first, the last entry what is said last, so the viewer is always looking at the thing currently being described. Do not repeat the same shot; advance the scene as the narration advances. Every entry stays anchored to the subject.
 
 Sub-topic focus for this episode: ${subTheme}
 - Pick one specific real subject that fits this sub-topic.
@@ -374,6 +376,29 @@ function deriveSubject(ep: Episode, subTheme: string): string {
   return subTheme;
 }
 
+// Upper bound on ordered shot-beat queries kept per section. More than this and
+// each clip would be too short to read; the cap also bounds stock-API calls.
+const MAX_SHOT_BEATS = 6;
+
+// The ordered per-beat b-roll queries for a section: clean each, anchor it to the
+// subject, drop blanks, and cap the count. Falls back to the single "visual"
+// query (also subject-anchored) when the model omitted or emptied the array, so
+// the pipeline always has at least one on-topic query to fetch.
+function sanitizeVisuals(
+  rawVisuals: unknown,
+  fallbackVisual: string,
+  subject: string,
+): string[] {
+  const list = Array.isArray(rawVisuals) ? rawVisuals : [];
+  const cleaned = list
+    .map((v) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : ''))
+    .filter(Boolean)
+    .slice(0, MAX_SHOT_BEATS)
+    .map((v) => anchorVisual(v, subject));
+  if (cleaned.length > 0) return cleaned;
+  return [anchorVisual(fallbackVisual, subject)];
+}
+
 // Guarantees a section's b-roll query stays on-topic: if the model's "visual"
 // already names the subject (or its head noun), leave it; otherwise prepend the
 // subject so the stock search is biased toward footage that actually shows it.
@@ -420,8 +445,13 @@ function normalizeEpisode(ep: Episode, series: Series, subTheme: string): Episod
 
   const sections = ep.sections.map((sec, i) => {
     // Anchor every section's b-roll query to the episode subject so the footage
-    // stays on-topic even when the model writes an off-subject "visual".
-    const base = { ...sec, visual: anchorVisual(sec.visual, subject) };
+    // stays on-topic even when the model writes an off-subject "visual", and
+    // build the ordered per-beat shot list the pipeline fetches against.
+    const base = {
+      ...sec,
+      visual: anchorVisual(sec.visual, subject),
+      visuals: sanitizeVisuals(sec.visuals, sec.visual, subject),
+    };
     if (!OVERLAY_ALLOWED_SECTIONS.has(i)) {
       const { overlays: _unused, ...rest } = base;
       void _unused;
