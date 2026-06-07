@@ -30,6 +30,12 @@ import {
 // committed). This is the ONLY music source: it is the one library YouTube does
 // not Content-ID-claim, so it never costs the channel monetization.
 const YT_MUSIC_DIR = path.join(ASSETS_DIR, 'yt_music');
+// Dedicated nature / white-noise / birdsong / insect beds for interludes ONLY.
+// Unlike yt_music these never enter the main-BGM pool (pickLocalBgm), so they can
+// decorate segment transitions without ever playing under the whole narration.
+// Files here must still be named "Title - Artist.mp3" for attribution, and come
+// from a Content-ID-safe source (e.g. the YouTube Audio Library ambience/SFX).
+const AMBIENT_DIR = path.join(ASSETS_DIR, 'ambient_nature');
 // Tracks that have been Content-ID-claimed on a published video. One relative
 // path per line (relative to assets/, forward slashes); '#' comments allowed.
 // Listed tracks are never picked again.
@@ -426,15 +432,18 @@ export async function fetchBgm(
 const LOCAL_AMBIENT_PREFERRED = ['ambient', 'calm', 'nature'];
 
 function pickLocalAmbient(): string | null {
-  // Same source policy as BGM (YouTube Audio Library only), then prefer the
-  // calmest beds within whatever is eligible.
+  // Dedicated nature/white-noise beds (interlude-only, never main BGM) plus the
+  // calmest YouTube Audio Library beds. Drawing from the union keeps variety so
+  // every interlude isn't the same birdsong loop.
+  const nature = playableTracksIn(AMBIENT_DIR);
   const all = eligibleTracks();
-  if (all.length === 0) return null;
-  const preferred = all.filter((file) =>
+  const ytPreferred = all.filter((file) =>
     LOCAL_AMBIENT_PREFERRED.some((name) => musicRelKey(file).toLowerCase().includes(name)),
   );
-  const pool = preferred.length > 0 ? preferred : all;
-  return pickRandom(pool);
+  const pool = [...nature, ...ytPreferred];
+  if (pool.length > 0) return pickRandom(pool);
+  // No nature beds and no calm YT tracks — fall back to any eligible track.
+  return all.length > 0 ? pickRandom(all) : null;
 }
 
 export async function fetchAmbient(
