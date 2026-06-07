@@ -165,10 +165,9 @@ Tone for this structural template:
 - Avoid happy-doc framings ("isn't nature wonderful"). Stay specific, restrained.
 
 Title style:
-- ${structure.titleStyleNote}
-- LEAD WITH THE STAKES. The first few words of the title must name the concrete subject AND its single most surprising action, consequence, or outcome from THIS script — a strong verb or a high-stakes noun. The shocking thing goes at the FRONT, never after a vague wrapper.
-- Banned openers (they bury the payoff and kill click-through): "What X does / What X actually does", "The truth about X", "Why X is not what you think", "How X actually works", "What X hides", "You won't believe", "The secret of X". If a lane above is shaped like one of these, rewrite it so the surprising outcome leads.
-- Good — leads with the shock: "The Termite That Explodes Itself to Kill Ants". Weak — buries it: "What the Blue Crystals on This Termite's Back Actually Do".
+- Stay in THIS episode's title frame — ${structure.titleStyleNote} Keep that voice; the frame is meant to vary episode to episode, so do NOT flatten every title into the same shape.
+- Within that frame, SURFACE THE STAKES: the concrete subject and its single most surprising action, consequence, or outcome from this script must be present and prominent — a strong verb or a high-stakes noun. The frame is the wrapper; the shock is the payload. Never let generic wrapper words ("what … actually does", "the truth about …") fill the title while the surprising thing stays vague or hidden.
+- Good — frame kept, shock visible: "The Termite That Explodes Itself to Kill Ants". Weak — wrapper with the shock buried: "What the Blue Crystals on This Termite's Back Actually Do".
 - 50-70 chars. No clickbait lies — the payoff must be real and delivered in the script.
 - Never invent specific institutions, document numbers, or named whistleblowers. Plausible and generic only.
 - No exclamation marks. No emoji. No ALL CAPS except a single word for emphasis at most.
