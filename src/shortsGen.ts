@@ -19,16 +19,21 @@ export function planShortsForToday(weekdayUtc: number): ShortsPlanEntry[] {
   if (override !== undefined) {
     log(`Shorts: SHORTS_PLAN_WEEKDAY=${override} overrides real UTC weekday ${weekdayUtc}`);
   }
+  // Long videos publish Mon/Wed/Fri (1/3/5). Each long-video run also produces
+  // shorts scheduled onto the off-days so 2/4/6/7 all get a short:
+  //   Mon (animals) → Tue short (+1d)
+  //   Wed (insects) → Thu short (+1d)   [no +2d: Fri is now a long-video day]
+  //   Fri (plants)  → Sat (+1d) + Sun (+2d) shorts, both from the Fri episode
   switch (effective) {
     case 1:
       return [{ sectionIdx: 0, daysAhead: 1 }];
     case 3:
+      return [{ sectionIdx: 0, daysAhead: 1 }];
+    case 5:
       return [
         { sectionIdx: 0, daysAhead: 1 },
         { sectionIdx: 4, daysAhead: 2 },
       ];
-    case 5:
-      return [{ sectionIdx: 0, daysAhead: 1 }];
     default:
       return [];
   }

@@ -8,13 +8,13 @@ beforeEach(() => {
 });
 
 test('long-video days drip shorts onto the off days (Mon/Wed/Fri)', () => {
-  // Mon(1) -> Tue, Wed(3) -> Thu+Fri, Fri(5) -> Sat.
+  // Mon(1) -> Tue, Wed(3) -> Thu, Fri(5) -> Sat+Sun (both from the Fri episode).
   assert.deepEqual(planShortsForToday(1), [{ sectionIdx: 0, daysAhead: 1 }]);
-  assert.deepEqual(planShortsForToday(3), [
+  assert.deepEqual(planShortsForToday(3), [{ sectionIdx: 0, daysAhead: 1 }]);
+  assert.deepEqual(planShortsForToday(5), [
     { sectionIdx: 0, daysAhead: 1 },
     { sectionIdx: 4, daysAhead: 2 },
   ]);
-  assert.deepEqual(planShortsForToday(5), [{ sectionIdx: 0, daysAhead: 1 }]);
 });
 
 test('non-long-video days schedule nothing themselves', () => {

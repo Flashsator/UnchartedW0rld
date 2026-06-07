@@ -14,6 +14,8 @@ Three videos per week on a **fixed weekday → topic** mapping, anchored to **Ta
 | 週三 (Wed) | 昆蟲 Insects | Tiny Titans (`insects`) | 21:00 | 13:00 |
 | 週五 (Fri) | 植物 Plants | Rooted Anomalies (`plants`) | 21:00 | 13:00 |
 
+Each long-video run also drips **Shorts onto the off-days**, derived from that day's episode: 週一→週二, 週三→週四, 週五→週六+週日 (週六/週日 both come from Friday's plants episode). So Shorts publish 週二/週四/週六/週日 (Tue/Thu/Sat/Sun).
+
 The schedule is fired by a **Cloudflare Worker cron** (`0 13 * * 1,3,5` UTC), which dispatches `daily.yml` via the GitHub REST API — more reliable than GitHub's own `schedule:` cron. A GitHub native `schedule:` cron (`30 15 * * 1,3,5` UTC) runs as a backup in case the Cloudflare trigger misses. See `cloudflare-trigger/`.
 
 ## Series
