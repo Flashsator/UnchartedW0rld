@@ -1,12 +1,8 @@
 export type SectionOverlay = {
-  kind: 'stat' | 'label' | 'compare';
+  kind: 'stat' | 'label';
   triggerWord: string;
   text: string;
   subtext?: string;
-  compareLabel?: string;
-  compareWith?: string;
-  compareLeftValue?: number;
-  compareRightValue?: number;
   holdSec?: number;
 };
 

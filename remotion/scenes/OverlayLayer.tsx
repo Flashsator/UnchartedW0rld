@@ -151,68 +151,6 @@ function LabelBody({ overlay }: { overlay: SectionOverlay }) {
   );
 }
 
-function CompareBody({ overlay, fillProgress }: { overlay: SectionOverlay; fillProgress: number }) {
-  const leftV = overlay.compareLeftValue ?? 50;
-  const rightV = overlay.compareRightValue ?? 50;
-  const max = Math.max(leftV, rightV, 1);
-  const leftPct = (leftV / max) * 100 * fillProgress;
-  const rightPct = (rightV / max) * 100 * fillProgress;
-  return (
-    <div style={{ position: 'relative', width: 640, padding: '28px 32px' }}>
-      <ProtectionBlock width={640} height={250} />
-      <div style={{ position: 'relative' }}>
-        <div
-          style={{
-            fontFamily: '"Inter", "Helvetica Neue", system-ui, sans-serif',
-            fontWeight: 600,
-            fontSize: 24,
-            color: TEXT_PRIMARY,
-            letterSpacing: '0.22em',
-            textTransform: 'uppercase',
-          }}
-        >
-          {overlay.compareLabel ?? ''}
-        </div>
-        <div style={{ width: '100%', height: 2, background: ACCENT, marginTop: 14, marginBottom: 28 }} />
-        <CompareRow label={overlay.text} pct={leftPct} />
-        <div style={{ height: 18 }} />
-        <CompareRow label={overlay.compareWith ?? ''} pct={rightPct} />
-      </div>
-    </div>
-  );
-}
-
-function CompareRow({ label, pct }: { label: string; pct: number }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-      <div
-        style={{
-          width: 110,
-          fontFamily: '"Inter", "Helvetica Neue", system-ui, sans-serif',
-          fontWeight: 700,
-          fontSize: 28,
-          color: TEXT_PRIMARY,
-          letterSpacing: '0.04em',
-        }}
-      >
-        {label}
-      </div>
-      <div style={{ flex: 1, height: 14, background: 'rgba(255,255,255,0.14)', position: 'relative' }}>
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            height: '100%',
-            width: `${pct}%`,
-            background: ACCENT,
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
 type OverlayLayerProps = {
   overlays: SectionOverlay[];
   words: WordTiming[];
@@ -257,10 +195,6 @@ export function OverlayLayer({ overlays, words, sectionIdx }: OverlayLayerProps)
           extrapolateLeft: 'clamp',
           extrapolateRight: 'clamp',
         });
-        const fillProgress = interpolate(rel, [FADE_IN_SEC, FADE_IN_SEC + 0.6], [0, 1], {
-          extrapolateLeft: 'clamp',
-          extrapolateRight: 'clamp',
-        });
 
         return (
           <div
@@ -274,9 +208,6 @@ export function OverlayLayer({ overlays, words, sectionIdx }: OverlayLayerProps)
           >
             {r.overlay.kind === 'stat' ? <StatBody overlay={r.overlay} /> : null}
             {r.overlay.kind === 'label' ? <LabelBody overlay={r.overlay} /> : null}
-            {r.overlay.kind === 'compare' ? (
-              <CompareBody overlay={r.overlay} fillProgress={fillProgress} />
-            ) : null}
           </div>
         );
       })}

@@ -138,13 +138,12 @@ Shape:
 
 Overlay Rules (CRITICAL):
 - ONLY sections at index 2, 3, 4, 5 may include overlays. Sections 0, 1, 6 MUST NOT include the "overlays" field at all (omit the key entirely).
-- Each overlay is one of three kinds:
+- Each overlay is one of two kinds:
   * { "kind": "stat", "triggerWord": "<single word from this section's narration>", "text": "<short value, e.g., '47%', '1986', '12,000'>", "subtext": "<2-5 word context, e.g., 'OF FOSSILS MISIDENTIFIED'>" }
   * { "kind": "label", "triggerWord": "<single word from this section's narration>", "text": "<proper noun or term, e.g., 'TROGLORAPTOR'>", "subtext": "<short meta, e.g., 'genus · 2010'>" }
-  * { "kind": "compare", "triggerWord": "<single word from this section's narration>", "compareLabel": "<2-3 word title, e.g., 'FREQUENCY'>", "text": "<left label, e.g., '1850'>", "compareWith": "<right label, e.g., '2024'>", "compareLeftValue": <number 1-100>, "compareRightValue": <number 1-100> }
 - "triggerWord" MUST be an exact word that appears verbatim in that section's narration text (case-insensitive). Pick a meaningful word, not a generic one like "the" or "and".
 - Maximum 2 overlays per section. Prefer 1 overlay if there is only one strong data point.
-- Overlays should reinforce a real number, name, or comparison spoken in that section — never invent data.
+- An overlay may ONLY surface a number, percentage, date, name, or term that is actually stated in that section's narration. NEVER invent a figure, magnitude, or comparison value — no made-up percentages, no fabricated "X vs Y" bars. If the exact value is not spoken in the narration, do not create the overlay.
 - If a section has no overlay-worthy content, omit the "overlays" field for that section.
 
 Rules:
@@ -315,30 +314,17 @@ function sanitizeOverlay(raw: unknown, narration: string): SectionOverlay | null
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   const kind = typeof o.kind === 'string' ? o.kind : '';
-  if (kind !== 'stat' && kind !== 'label' && kind !== 'compare') return null;
+  // "compare" overlays carried invented 1-100 bar magnitudes (e.g. "YOUNG 20 /
+  // OLD 90 TOXICITY") that read like measured data but were fabricated by the
+  // model. The kind is dropped — stat/label both surface a value that must
+  // appear in the narration. Reject any compare the model still emits.
+  if (kind !== 'stat' && kind !== 'label') return null;
   const triggerWord = typeof o.triggerWord === 'string' ? o.triggerWord.trim() : '';
   const text = typeof o.text === 'string' ? o.text.trim() : '';
   if (!triggerWord || !text) return null;
   const narrationLower = narration.toLowerCase();
   if (!narrationLower.includes(triggerWord.toLowerCase())) return null;
   const subtext = typeof o.subtext === 'string' ? o.subtext.trim() : undefined;
-  if (kind === 'compare') {
-    const compareWith = typeof o.compareWith === 'string' ? o.compareWith.trim() : '';
-    const compareLabel = typeof o.compareLabel === 'string' ? o.compareLabel.trim() : '';
-    const leftV = Number(o.compareLeftValue);
-    const rightV = Number(o.compareRightValue);
-    if (!compareWith || !compareLabel) return null;
-    if (!Number.isFinite(leftV) || !Number.isFinite(rightV)) return null;
-    return {
-      kind: 'compare',
-      triggerWord,
-      text,
-      compareWith,
-      compareLabel,
-      compareLeftValue: Math.max(0, Math.min(100, leftV)),
-      compareRightValue: Math.max(0, Math.min(100, rightV)),
-    };
-  }
   return { kind, triggerWord, text, subtext };
 }
 
