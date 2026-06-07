@@ -448,14 +448,92 @@ function listLocalMp3sRecursive(dir: string): string[] {
   return out;
 }
 
+// The yt_music library is organized by mood folder ({Ambient,Cinematic,
+// Classical}-{Calm,Dark,Dramatic}). These map an episode's music tags to the
+// folder MOOD it should draw from, so an ominous episode never lands a "calm"
+// bed (or vice versa) just because a filename token happened to coincide.
+const MOOD_KEYWORDS: Record<string, string[]> = {
+  dramatic: ['dramatic', 'epic', 'intense', 'powerful', 'battle', 'cosmic', 'sci-fi'],
+  dark: [
+    'dark', 'suspense', 'mysterious', 'ominous', 'creeping', 'eerie', 'tense',
+    'investigative', 'curious', 'cerebral', 'ancient', 'abyssal', 'deep',
+  ],
+  calm: ['calm', 'gentle', 'serene', 'soft', 'peaceful', 'organic', 'nature', 'botanical'],
+};
+
+// How many recent tracks to avoid replaying. Kept small so a pruned library
+// never starves the picker; persisted newline-separated in LAST_BGM_FILE.
+const BGM_HISTORY = 4;
+
+// The dominant mood(s) an episode's music queries ask for: the mood family with
+// the most keyword hits (ties allowed). Empty when nothing matches, which lets
+// the picker fall back to the whole library.
+export function preferredMoods(queries: string[]): string[] {
+  const text = queries.join(' ').toLowerCase();
+  const counts = Object.entries(MOOD_KEYWORDS).map(([mood, kws]) => ({
+    mood,
+    hits: kws.reduce((a, k) => a + (text.includes(k) ? 1 : 0), 0),
+  }));
+  const max = counts.reduce((m, c) => Math.max(m, c.hits), 0);
+  if (max === 0) return [];
+  return counts.filter((c) => c.hits === max).map((c) => c.mood);
+}
+
+// The mood folder a track lives in, read from its assets-relative path
+// (e.g. "yt_music/Cinematic-Dark/...") -> "dark". Pure on the path string so it
+// is unit-testable. Returns null for tracks outside a recognized mood folder.
+export function moodFromPath(relPath: string): string | null {
+  const p = relPath.toLowerCase();
+  if (p.includes('dramatic')) return 'dramatic';
+  if (p.includes('dark')) return 'dark';
+  if (p.includes('calm')) return 'calm';
+  return null;
+}
+
+function loadBgmHistory(): string[] {
+  try {
+    return fs
+      .readFileSync(LAST_BGM_FILE, 'utf-8')
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .slice(0, BGM_HISTORY);
+  } catch {
+    return [];
+  }
+}
+
+function saveBgmHistory(chosenKey: string, recent: string[]): void {
+  try {
+    fs.mkdirSync(WORK_DIR, { recursive: true });
+    const next = [chosenKey, ...recent.filter((k) => k !== chosenKey)].slice(0, BGM_HISTORY);
+    fs.writeFileSync(LAST_BGM_FILE, next.join('\n'), 'utf-8');
+  } catch {
+    // Persistence is best-effort.
+  }
+}
+
 function pickLocalBgm(queries: string[]): string | null {
-  const tokens = queries
-    .flatMap((q) => q.toLowerCase().split(/\s+/))
-    .filter((t) => t.length >= 4);
   const sourcePool = eligibleTracks();
   if (sourcePool.length === 0) return null;
 
-  const scored = sourcePool.map((file) => {
+  // 1) Bias to the episode's mood folder. If that mood isn't represented in the
+  //    (possibly pruned) library, fall back to the whole pool rather than fail.
+  const moods = preferredMoods(queries);
+  const moodMatched =
+    moods.length > 0
+      ? sourcePool.filter((f) => {
+          const m = moodFromPath(musicRelKey(f));
+          return m !== null && moods.includes(m);
+        })
+      : [];
+  const moodPool = moodMatched.length > 0 ? moodMatched : sourcePool;
+
+  // 2) Within the mood pool, rank by filename/path token overlap (secondary).
+  const tokens = queries
+    .flatMap((q) => q.toLowerCase().split(/\s+/))
+    .filter((t) => t.length >= 4);
+  const scored = moodPool.map((file) => {
     const hay = musicRelKey(file).toLowerCase();
     const score = tokens.reduce((acc, t) => (hay.includes(t) ? acc + 1 : acc), 0);
     return { file, score };
@@ -463,23 +541,13 @@ function pickLocalBgm(queries: string[]): string | null {
   const maxScore = scored.reduce((m, s) => Math.max(m, s.score), 0);
   const pool = maxScore > 0 ? scored.filter((s) => s.score === maxScore) : scored;
 
-  // Avoid replaying the previous episode's track. Only fall back to allowing it
-  // when the matched pool has nothing else to offer.
-  let last: string | null = null;
-  try {
-    last = fs.readFileSync(LAST_BGM_FILE, 'utf-8').trim();
-  } catch {
-    // No previous run recorded — use the full matched pool.
-  }
-  const fresh = pool.filter((s) => s.file !== last);
+  // 3) Avoid the last BGM_HISTORY tracks so a small library doesn't loop fast.
+  //    Only relax this when the matched pool has nothing fresher to offer.
+  const recent = loadBgmHistory();
+  const fresh = pool.filter((s) => !recent.includes(musicRelKey(s.file)));
   const chosen = pickRandom(fresh.length > 0 ? fresh : pool).file;
 
-  try {
-    fs.mkdirSync(WORK_DIR, { recursive: true });
-    fs.writeFileSync(LAST_BGM_FILE, chosen, 'utf-8');
-  } catch {
-    // Persistence is best-effort.
-  }
+  saveBgmHistory(musicRelKey(chosen), recent);
   return chosen;
 }
 
