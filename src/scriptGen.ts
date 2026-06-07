@@ -15,6 +15,20 @@ import { log } from './utils.js';
 const wordsLo = Math.max(20, Math.round(WORDS_PER_SECTION * 0.85));
 const wordsHi = Math.round(WORDS_PER_SECTION * 1.4);
 
+// Scripts have been coming back ~1/4 of the target length, which under-fills the
+// runtime and starves retention. Reject anything egregiously short and let the
+// existing retry take another pass; accept the last attempt regardless so the
+// pipeline never stalls. 0.6 is lenient enough to pass once the model writes at
+// a normal length, while still catching the ~300-word failures.
+const MIN_TOTAL_WORDS = Math.round(TARGET_WORDS * 0.6);
+
+function totalNarrationWords(ep: Episode): number {
+  return ep.sections.reduce(
+    (sum, s) => sum + (s.narration?.trim().split(/\s+/).filter(Boolean).length ?? 0),
+    0,
+  );
+}
+
 const PROMISE_TAIL_PHRASINGS: string[] = [
   "By the end of this video, you'll know <specific reveal> — and why almost no one talks about it.",
   "Stay with me. The part they leave out is the part that matters.",
@@ -107,10 +121,10 @@ Shape:
 {
   "title": "string, 50-70 chars, ${structure.label} framing, no clickbait lies",
   "hook": "string, 1 sentence, 8-14 words — the cold-open line of section 0",
-  "description": "string, 600-1000 chars, YouTube description with 3 hashtags at the end",
-  "tags": ["10-15 single-word or 2-word tags"],
+  "description": "string, 600-1000 chars, YouTube description with 3 hashtags at the end. The FIRST sentence must state the single most surprising fact of the episode (the payoff) before any location or setup — it is the only line viewers see before the fold, so it must hook. Then expand.",
+  "tags": ["10-15 single-word or 2-word tags. Include 3-4 BROAD high-search-volume terms a curious non-expert would actually type (e.g. 'weird animals', 'nature documentary', 'insect defense', 'did you know') alongside the precise scientific names — not only academic jargon"],
   "subject": "string, 1-3 words — the ONE concrete, photographable thing this whole episode is about (a creature, object, place, or person), e.g. 'cave spider', 'glass frog', 'Roman aqueduct'. This is the visual anchor for EVERY b-roll query below. Must be a real, searchable noun, not an abstract idea.",
-  "thumbnailConcept": "string, 8-20 words — a SINGLE concrete, photographable real-world scene for the thumbnail background that instantly reads as this topic to a stranger. Describe ONE clear subject + setting + lighting. NO abstract textures, NO extreme macro close-ups, NO collages. Good: 'a clear human ear in profile with glowing sound waves flowing into it, clean bright lighting'. Bad: 'micro-detail biology', 'abstract neural patterns'.",
+  "thumbnailConcept": "string, 8-20 words — a SINGLE concrete, photographable real-world scene for the thumbnail background that instantly reads as this topic to a stranger AND is visually dramatic: high contrast, a tense moment or unexpected pose, a vivid color against a darker field, moody directional or rim light. Describe ONE clear subject + setting + dramatic lighting. NO abstract textures, NO extreme macro close-ups, NO collages, NO calm evenly-lit specimen shots. Good: 'a single termite seen large and close, its back glowing intense electric blue, against a dark moody background, dramatic rim light'. Bad: 'a termite on pale wood with a small blue patch, clean bright lighting', 'micro-detail biology', 'abstract neural patterns'.",
   "thumbnailWord": "string, ONE punchy uppercase word (3-8 letters) for the thumbnail caption — the single idea a viewer should feel. e.g., 'LISTEN', 'BURIED', 'WRONG'. Must NOT be a structural word like CASE/FILE/PROFILE.",
   "sections": [
     {
@@ -135,7 +149,7 @@ Overlay Rules (CRITICAL):
 
 Rules:
 - Exactly ${SECTION_COUNT} sections.
-- Total narration ~${TARGET_WORDS} words across all sections combined (~${TARGET_MINUTES} minutes at 150 wpm).
+- LENGTH IS MANDATORY. Total narration MUST be about ${TARGET_WORDS} words (±10%) across all ${SECTION_COUNT} sections combined — this is what fills the ~${TARGET_MINUTES}-minute video. Each section except the short closer must be a FULL ${wordsLo}-${wordsHi} words: develop the beat with 6-10 sentences of concrete detail — a named example, a figure, a vivid scene — not one terse paragraph. A script far under ${TARGET_WORDS} words is too short and will be rejected. Write long, specific narration, never a summary.
 - Never break the fourth wall ("welcome back", "in today's video", "don't forget to subscribe" — handled separately).
 - Cite specific numbers, species, places, dates where they sharpen the story.
 - No emoji, no markdown inside narration.
@@ -152,6 +166,10 @@ Tone for this structural template:
 
 Title style:
 - ${structure.titleStyleNote}
+- LEAD WITH THE STAKES. The first few words of the title must name the concrete subject AND its single most surprising action, consequence, or outcome from THIS script — a strong verb or a high-stakes noun. The shocking thing goes at the FRONT, never after a vague wrapper.
+- Banned openers (they bury the payoff and kill click-through): "What X does / What X actually does", "The truth about X", "Why X is not what you think", "How X actually works", "What X hides", "You won't believe", "The secret of X". If a lane above is shaped like one of these, rewrite it so the surprising outcome leads.
+- Good — leads with the shock: "The Termite That Explodes Itself to Kill Ants". Weak — buries it: "What the Blue Crystals on This Termite's Back Actually Do".
+- 50-70 chars. No clickbait lies — the payoff must be real and delivered in the script.
 - Never invent specific institutions, document numbers, or named whistleblowers. Plausible and generic only.
 - No exclamation marks. No emoji. No ALL CAPS except a single word for emphasis at most.
 
@@ -220,10 +238,19 @@ Pick ONE specific surprising topic within this sub-topic focus that fits a ${TAR
       validateEpisode(parsed);
       const normalized = normalizeEpisode(parsed, series, subTheme);
       const collision = findTitleCollision(normalized.title, avoidTitles);
-      if (collision && attempt < SCRIPT_GEN_ATTEMPTS) {
-        log(
-          `Topic collision: "${normalized.title}" overlaps already-published "${collision}". Regenerating (attempt ${attempt}/${SCRIPT_GEN_ATTEMPTS})...`,
-        );
+      const wordCount = totalNarrationWords(normalized);
+      const tooShort = wordCount < MIN_TOTAL_WORDS;
+      if ((collision || tooShort) && attempt < SCRIPT_GEN_ATTEMPTS) {
+        if (collision) {
+          log(
+            `Topic collision: "${normalized.title}" overlaps already-published "${collision}". Regenerating (attempt ${attempt}/${SCRIPT_GEN_ATTEMPTS})...`,
+          );
+        }
+        if (tooShort) {
+          log(
+            `Script only ${wordCount} words (floor ${MIN_TOTAL_WORDS} for ~${TARGET_WORDS}-word target). Regenerating (attempt ${attempt}/${SCRIPT_GEN_ATTEMPTS})...`,
+          );
+        }
         continue;
       }
       if (collision) {
@@ -231,8 +258,13 @@ Pick ONE specific surprising topic within this sub-topic focus that fits a ${TAR
           `Topic still overlaps "${collision}" after ${attempt} attempts; accepting to avoid stalling the pipeline.`,
         );
       }
+      if (tooShort) {
+        log(
+          `Script still only ${wordCount} words after ${attempt} attempts; accepting to avoid stalling the pipeline.`,
+        );
+      }
       log(
-        `Script: "${normalized.title}" — ${normalized.sections.length} sections, ${normalized.tags.length} tags, desc ${normalized.description.length} chars`,
+        `Script: "${normalized.title}" — ${normalized.sections.length} sections, ${wordCount} words, ${normalized.tags.length} tags, desc ${normalized.description.length} chars`,
       );
       return { episode: normalized, hookPattern: hook.name };
     } catch (err) {
