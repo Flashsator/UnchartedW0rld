@@ -29,7 +29,7 @@ import { makeThumbnail } from './thumbnail.js';
 import { renderVideo, renderShorts } from './render.js';
 import { buildChapters, muxAudio, muxShortsAudio, writeSrt } from './mux.js';
 import { buildAttribution, shortsMusicLine } from './attribution.js';
-import { listUploadedTitles, uploadVideo } from './youtube.js';
+import { addToSeriesPlaylist, listUploadedTitles, uploadCaption, uploadVideo } from './youtube.js';
 import { fetchTopPerformingTitles } from './analytics.js';
 import { extractIconEvents } from './iconExtractor.js';
 import { computeCutTimes } from './cuts.js';
@@ -298,6 +298,12 @@ async function main(): Promise<void> {
   // Long-form is live — record the lock so any later same-day run aborts above.
   writeUploadLock(today);
   log(`Done. https://youtu.be/${videoId} (scheduled ${publishAt.toISOString()})`);
+
+  // Best-effort enrichments (each self-contained & non-fatal): shelve the video
+  // on its series playlist for binge/session watch-time, and ship a real
+  // selectable caption track from the SRT we already wrote.
+  await addToSeriesPlaylist(videoId, series.name, series.theme);
+  await uploadCaption(videoId, path.join(runDir, 'captions.srt'));
 
   await runShortsPipeline(manifest, episode, series.categoryId, runDir, today, videoId, bgmCreditLine);
 }

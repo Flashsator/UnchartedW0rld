@@ -103,6 +103,96 @@ export async function listUploadedTitles(maxResults = 60): Promise<string[]> {
   }
 }
 
+// Adds a just-uploaded long video to its series playlist (e.g. "Wild Earth
+// Files"), creating the playlist if it doesn't exist yet. A per-series playlist
+// gives the channel a clean "Series" shelf and feeds YouTube's session-watch
+// signal (binge one theme → more watch time). Best-effort: any failure is
+// logged and swallowed so it never blocks an otherwise-successful upload.
+async function findPlaylistIdByTitle(
+  yt: ReturnType<typeof getClient>,
+  title: string,
+): Promise<string | null> {
+  let pageToken: string | undefined;
+  const wanted = title.trim().toLowerCase();
+  do {
+    const res = await yt.playlists.list({
+      part: ['snippet'],
+      mine: true,
+      maxResults: 50,
+      pageToken,
+    });
+    for (const pl of res.data.items ?? []) {
+      if (pl.snippet?.title?.trim().toLowerCase() === wanted && pl.id) return pl.id;
+    }
+    pageToken = res.data.nextPageToken ?? undefined;
+  } while (pageToken);
+  return null;
+}
+
+export async function addToSeriesPlaylist(
+  videoId: string,
+  playlistTitle: string,
+  playlistDescription = '',
+): Promise<void> {
+  try {
+    const yt = getClient();
+    let playlistId = await findPlaylistIdByTitle(yt, playlistTitle);
+    if (!playlistId) {
+      const created = await yt.playlists.insert({
+        part: ['snippet', 'status'],
+        requestBody: {
+          snippet: { title: playlistTitle, description: playlistDescription },
+          status: { privacyStatus: 'public' },
+        },
+      });
+      playlistId = created.data.id ?? null;
+      if (!playlistId) throw new Error('playlists.insert returned no id');
+      log(`Created series playlist "${playlistTitle}" (${playlistId})`);
+    }
+    await yt.playlistItems.insert({
+      part: ['snippet'],
+      requestBody: {
+        snippet: {
+          playlistId,
+          resourceId: { kind: 'youtube#video', videoId },
+        },
+      },
+    });
+    log(`Added ${videoId} to playlist "${playlistTitle}"`);
+  } catch (e) {
+    log(`Could not add to series playlist (continuing): ${(e as Error).message}`);
+  }
+}
+
+// Uploads the burned-in SRT as a real, selectable caption track so the video
+// ships with searchable/translatable captions instead of relying on YouTube's
+// ASR. Best-effort: needs the youtube.force-ssl scope — if the refresh token
+// lacks it the 403 is logged and swallowed (the video already has on-screen
+// captions baked into the render). isDraft:false publishes the track.
+export async function uploadCaption(
+  videoId: string,
+  srtPath: string,
+  language = 'en',
+): Promise<void> {
+  try {
+    if (!fs.existsSync(srtPath)) {
+      log(`Caption file missing, skipping caption upload: ${srtPath}`);
+      return;
+    }
+    const yt = getClient();
+    await yt.captions.insert({
+      part: ['snippet'],
+      requestBody: {
+        snippet: { videoId, language, name: 'English', isDraft: false },
+      },
+      media: { body: fs.createReadStream(srtPath) },
+    });
+    log(`Uploaded caption track (${language}) for ${videoId}`);
+  } catch (e) {
+    log(`Could not upload caption track (continuing): ${(e as Error).message}`);
+  }
+}
+
 export async function uploadVideo(
   videoPath: string,
   thumbnailPath: string | null,
