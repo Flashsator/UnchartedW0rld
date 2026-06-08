@@ -67,6 +67,18 @@ Key modules: `scriptGen.ts` (Claude CLI), `tts.ts` (Azure), `stock.ts` (Pexels/
 Pixabay/Coverr/Unsplash + BGM picking), `render.ts`/`remotion/` (compositions),
 `mux.ts` (ffmpeg audio + SRT + chapters), `thumbnail.ts` (FLUX), `youtube.ts`.
 
+After the long-form upload, `youtube.ts` runs three **best-effort, non-fatal**
+enrichments (each wrapped in try/catch so a failure never blocks a successful
+upload): `addToSeriesPlaylist` (shelves the video on its series-name playlist,
+creating it public if absent), `uploadCaption` (uploads the burned-in SRT as a
+real selectable caption track via `captions.insert` — **needs the
+`youtube.force-ssl` OAuth scope**, otherwise it logs the 403 and skips), and
+localized title/description metadata (`translateMetadata` in `scriptGen.ts`
+reuses the script-gen Claude CLI to translate the title + prose blurb into
+es/pt/hi/id; passed as `videos.insert` `localizations`). The channel stays
+**English-primary** (`defaultLanguage: 'en'`, base snippet + audio + burned-in
+on-screen text unchanged) — localization is discovery metadata only.
+
 ## Config & env overrides
 
 - **Script-generation model:** `src/scriptGen.ts` `CLAUDE_MODEL` (currently
