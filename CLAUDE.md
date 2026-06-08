@@ -97,6 +97,13 @@ on-screen text unchanged) — localization is discovery metadata only.
   (`scripts/bootstrap_youtube_token.ts` requests all four; re-mint there to change).
 - **Schedule:** `PUBLISH_WEEKDAYS_UTC = [1,3,5]`; `WEEKDAY_SERIES_MAP` = Mon→animals,
   Wed→insects, Fri→plants. Shorts: Mon/Wed → 1 short, Fri → 2.
+- **Trigger:** an **Upstash QStash** schedule (cron `0 13 * * 1,3,5` UTC) POSTs a
+  `workflow_dispatch` to `daily.yml` — the **sole** trigger. The old Cloudflare
+  Worker (`cloudflare-trigger/`) and GitHub `schedule:` cron are retired/removed; the
+  CF Worker still needs decommissioning on Cloudflare's side. (Cloudflare Workers AI
+  for FLUX.2 thumbnails is a separate product, still in use.) Manual fallback:
+  `gh workflow run "Daily video" --ref main`. Setup + the
+  `GET /v2/schedules` token-leak hazard live in `docs/scheduling-troubleshooting.md`.
 - **Day numbering** uses `new Date().getUTCDay()` (0=Sun … 6=Sat).
 - **Override env vars** (handy for local testing): `DRY_RUN`, `WEEKDAY=N`,
   `SHORTS_PLAN_WEEKDAY=N`, `SERIES_KEY`, `SUB_THEME`, `STRUCTURE_KEY`, `TONE_KEY`,
