@@ -37,6 +37,10 @@ export type UploadOptions = {
   // Compact music attribution line (Shorts only — the long-form description is
   // composed upstream in the pipeline).
   musicCredit?: string;
+  // Translated title/description per language code. The channel stays
+  // English-primary (defaultLanguage 'en'); these are added as alternates so
+  // non-English viewers can discover the video in their feed/search.
+  localizations?: Record<string, { title: string; description: string }>;
 };
 
 function truncate(s: string, max: number): string {
@@ -215,9 +219,17 @@ export async function uploadVideo(
     description = shortsDescription(episode, opts.longVideoId, opts.musicCredit);
   }
 
+  // Localized title/description metadata (long-form only). defaultLanguage must
+  // be set for YouTube to treat the base snippet as the 'en' localization and
+  // serve the alternates by viewer language. Empty/absent → English-only.
+  const localizations =
+    opts.localizations && Object.keys(opts.localizations).length > 0
+      ? opts.localizations
+      : undefined;
+
   log(`Uploading${opts.isShorts ? ' shorts' : ''} to YouTube: ${title}`);
   const insertRes = await yt.videos.insert({
-    part: ['snippet', 'status'],
+    part: localizations ? ['snippet', 'status', 'localizations'] : ['snippet', 'status'],
     requestBody: {
       snippet: {
         title,
@@ -232,6 +244,7 @@ export async function uploadVideo(
         publishAt: scheduledIso,
         selfDeclaredMadeForKids: false,
       },
+      ...(localizations ? { localizations } : {}),
     },
     media: {
       body: fs.createReadStream(videoPath),

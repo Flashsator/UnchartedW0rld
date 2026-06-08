@@ -22,7 +22,7 @@ import {
   pickVoice,
   seriesForToday,
 } from './config.js';
-import { generateEpisode, generateShortsBlurb } from './scriptGen.js';
+import { generateEpisode, generateShortsBlurb, translateMetadata } from './scriptGen.js';
 import { synthesize } from './tts.js';
 import { fetchAmbient, fetchBgm, fetchBroll, fetchBrollForBeats } from './stock.js';
 import { makeThumbnail } from './thumbnail.js';
@@ -292,8 +292,28 @@ async function main(): Promise<void> {
   if (publishAt.getTime() <= nowTs.getTime()) {
     publishAt = new Date(nowTs.getTime() + PUBLISH_OFFSET_HOURS * 3600_000);
   }
+  // Best-effort localized title/description so non-English viewers can discover
+  // the video in their feed/search. Channel stays English-primary; we translate
+  // only the title + prose blurb, then re-attach the language-neutral
+  // chapters/footer/attribution so timestamps and URLs are never mangled.
+  const translations = await translateMetadata(episode.title, episode.description);
+  const localizations = Object.fromEntries(
+    Object.entries(translations).map(([code, t]) => [
+      code,
+      {
+        title: t.title,
+        description: [t.description, chapters, CHANNEL_FOOTER, attribution]
+          .filter(Boolean)
+          .join('\n\n'),
+      },
+    ]),
+  );
+  const localeCount = Object.keys(localizations).length;
+  if (localeCount > 0) log(`Localized metadata into ${localeCount} languages: ${Object.keys(localizations).join(', ')}`);
+
   const videoId = await uploadVideo(finalVideo, thumbPath, episodeForUpload, series.categoryId, {
     publishAt,
+    localizations,
   });
   // Long-form is live — record the lock so any later same-day run aborts above.
   writeUploadLock(today);

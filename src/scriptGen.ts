@@ -579,6 +579,69 @@ function runClaudeCli(prompt: string): Promise<string> {
   });
 }
 
+// High-traffic YouTube languages whose audiences mostly browse/search in their
+// own language. We keep the channel English-primary (defaultLanguage stays
+// 'en') and only ADD localized title/description metadata so these viewers can
+// discover the video in their feed — the audio and on-screen text stay English.
+export const LOCALIZE_LANGS: ReadonlyArray<{ code: string; name: string }> = [
+  { code: 'es', name: 'Spanish' },
+  { code: 'pt', name: 'Portuguese' },
+  { code: 'hi', name: 'Hindi' },
+  { code: 'id', name: 'Indonesian' },
+];
+
+export type LocalizedText = { title: string; description: string };
+
+// Translates the click-facing TITLE and the human PROSE blurb into each target
+// language for YouTube `localizations`. Only the blurb is translated here; the
+// caller re-appends the language-neutral chapters/links/attribution so
+// timestamps and URLs are never mangled. Best-effort: any failure (CLI error,
+// unparseable output, missing keys) yields an empty map and the upload proceeds
+// English-only. Title is clamped to YouTube's 100-char limit per locale.
+export async function translateMetadata(
+  title: string,
+  blurb: string,
+  langs: ReadonlyArray<{ code: string; name: string }> = LOCALIZE_LANGS,
+): Promise<Record<string, LocalizedText>> {
+  try {
+    const langList = langs.map((l) => `"${l.code}" (${l.name})`).join(', ');
+    const prompt =
+      `You are a localization expert for a science documentary YouTube channel.\n` +
+      `Translate the TITLE and DESCRIPTION below into these languages: ${langList}.\n` +
+      `Make the title natural and click-worthy in each language (not a stiff literal translation), max 100 characters.\n` +
+      `Keep any proper nouns / species names that have no common translation as-is.\n` +
+      `Return ONLY strict JSON keyed by language code, each value an object with "title" and "description". No commentary, no code fence.\n` +
+      `Example shape: {"es":{"title":"...","description":"..."}}\n\n` +
+      `TITLE:\n${title}\n\nDESCRIPTION:\n${blurb}`;
+    const raw = await runClaudeCli(prompt);
+    const out: Record<string, LocalizedText> = {};
+    for (const candidate of extractJsonCandidates(raw)) {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(candidate);
+      } catch {
+        continue;
+      }
+      if (!parsed || typeof parsed !== 'object') continue;
+      for (const { code } of langs) {
+        const entry = (parsed as Record<string, unknown>)[code];
+        if (entry && typeof entry === 'object') {
+          const t = (entry as Record<string, unknown>).title;
+          const d = (entry as Record<string, unknown>).description;
+          if (typeof t === 'string' && t.trim() && typeof d === 'string' && d.trim()) {
+            out[code] = { title: t.trim().slice(0, 100), description: d.trim() };
+          }
+        }
+      }
+      if (Object.keys(out).length > 0) break;
+    }
+    return out;
+  } catch (e) {
+    console.log(`[localize] translation failed (continuing English-only): ${(e as Error).message}`);
+    return {};
+  }
+}
+
 // Extracts every balanced, top-level {...} object from a string, tracking
 // string literals and escapes so braces inside JSON strings never confuse the
 // scanner. Returned in source order.
