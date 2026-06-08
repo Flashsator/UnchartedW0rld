@@ -16,7 +16,7 @@ Three videos per week on a **fixed weekday → topic** mapping, anchored to **Ta
 
 Each long-video run also drips **Shorts onto the off-days**, derived from that day's episode: 週一→週二, 週三→週四, 週五→週六+週日 (週六/週日 both come from Friday's plants episode). So Shorts publish 週二/週四/週六/週日 (Tue/Thu/Sat/Sun).
 
-The schedule is fired by a **Cloudflare Worker cron** (`0 13 * * 1,3,5` UTC), which dispatches `daily.yml` via the GitHub REST API — more reliable than GitHub's own `schedule:` cron. A GitHub native `schedule:` cron (`30 15 * * 1,3,5` UTC) runs as a backup in case the Cloudflare trigger misses. See `cloudflare-trigger/`.
+The schedule is fired by an **Upstash QStash schedule** (cron `0 13 * * 1,3,5` UTC), which POSTs a `workflow_dispatch` to `daily.yml` via the GitHub REST API. This is the **sole** trigger — the old Cloudflare Worker and GitHub native `schedule:` cron were both retired (see `docs/scheduling-troubleshooting.md`). Manual fallback: `gh workflow run "Daily video" --ref main`.
 
 ## Series
 
@@ -99,7 +99,7 @@ npm run studio                 # open Remotion Studio to iterate on visuals
 
 ## Cloud automation
 
-- Schedule is driven by the **Cloudflare Worker** in `cloudflare-trigger/` (cron `0 13 * * 1,3,5`), which dispatches `daily.yml` via a fine-grained GitHub PAT (Actions-only write, scoped to this repo). The PAT lives only in Cloudflare's encrypted secret store.
+- Schedule is driven by an **Upstash QStash schedule** (cron `0 13 * * 1,3,5`), which dispatches `daily.yml` via a fine-grained GitHub PAT (Actions-only write, scoped to this repo), forwarded in the `Upstash-Forward-Authorization` header. See `docs/scheduling-troubleshooting.md` for setup and the schedule-read token-leak hazard.
 - `daily.yml` (`timeout-minutes: 240`, `runs-on: ubuntu-latest`) installs ffmpeg, Chromium, fonts, and Remotion, then runs the pipeline end-to-end. Can also be triggered manually from the Actions tab.
 
 ## Repo layout
@@ -117,8 +117,7 @@ src/             pipeline modules (one per stage)
   pipeline.ts    orchestrator (entry point)
 remotion/        composition + scenes (Intro / SectionScene / AmbientBreather / Outro)
 scripts/         bootstrap_youtube_token.ts
-cloudflare-trigger/  scheduled dispatch Worker
-.github/workflows/daily.yml
+.github/workflows/daily.yml   (triggered by an Upstash QStash schedule)
 ```
 
 ## License

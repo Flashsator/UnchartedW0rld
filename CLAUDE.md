@@ -12,8 +12,9 @@ pulls stock b-roll, renders with Remotion (headless Chrome), muxes audio with
 ffmpeg, generates a thumbnail (FLUX), and uploads to YouTube. No human in the loop.
 
 - Pure Node/TS + React/Remotion. No framework backend.
-- Triggered on a schedule (Cloudflare Worker cron → GitHub Actions). **CI runs the
-  code on `main`, so a change only affects real videos once pushed.**
+- Triggered on a schedule (Upstash QStash → `workflow_dispatch` → GitHub Actions;
+  the old Cloudflare Worker trigger is retired/removed). **CI runs the code on
+  `main`, so a change only affects real videos once pushed.**
 - Repo path is `UnchartedW0rld` (the trigger depends on it); the *channel* is
   "Wild Anomalies". Don't rename the repo.
 

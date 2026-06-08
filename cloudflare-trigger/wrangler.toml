@@ -1,8 +1,0 @@
-name = "uncharted-daily-trigger"
-main = "src/index.js"
-compatibility_date = "2026-06-03"
-
-# Cron is UTC. 13:00 UTC = 21:00 Taiwan (UTC+8), Mon/Wed/Fri.
-# Cloudflare cron jitter is sub-minute, unlike GitHub's multi-hour delays.
-[triggers]
-crons = ["0 13 * * 1,3,5"]

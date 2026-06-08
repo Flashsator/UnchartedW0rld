@@ -61,64 +61,22 @@ So the Short seen on 06-07 (`aVToU-9aNos`) was **scheduled by the 06-06 run for 
 day**, **not** published by the 06-07 run — the 06-07 run's log explicitly says
 "Shorts: nothing scheduled for today." Not a bug.
 
-## Fix steps (historical — for the retired CF Worker)
+## Fix (what was actually done)
 
-### A. Redeploy the Worker to sync the cron to Mon/Wed/Fri
-
-> ⚠️ First confirm `wrangler.toml`'s `crons` really are the publish days you want
-> (currently Mon/Wed/Fri, matching `CLAUDE.md`). `deploy` uses it to overwrite the live cron.
-
-You need valid credentials first. Pick one:
-
-```powershell
-# Option 1: interactive login (opens a browser, you must run it yourself in the terminal)
-#   In the Claude Code input box, type:  ! npx wrangler login
-# After login:
-cd cloudflare-trigger
-npx wrangler deploy
-```
-
-```powershell
-# Option 2: use a new API token (generate per section B), no browser needed
-$env:CLOUDFLARE_API_TOKEN = "<new token>"
-cd cloudflare-trigger
-npx wrangler deploy
-```
-
-- `wrangler deploy` **only updates code + cron**; it **does not touch the `GH_PAT`
-  secret** (that's set via `wrangler secret put`), so triggering keeps working after deploy.
-- If wrangler asks which account to use, pick the one that owns `uncharted-daily-trigger`.
-
-### B. Regenerate the dead `CLOUDFLARE_API_TOKEN`
-
-1. Cloudflare Dashboard → My Profile → **API Tokens** → Create Token.
-2. Minimum permission: **Account › Workers Scripts › Edit**
-   (add **Account › Workers Scripts › Read** if you also want to read cron schedules).
-3. Once generated, update `CLOUDFLARE_API_TOKEN=` in the project-root `.env` (`.env` is gitignored).
-4. Verify:
-   ```bash
-   curl -s https://api.cloudflare.com/client/v4/user/tokens/verify \
-     -H "Authorization: Bearer <new token>"
-   # expect "success": true, "status": "active"
-   ```
-
-### C. (Recommended) Confirm the GH_PAT secret is still valid
-
-The Worker uses `GH_PAT` (a fine-grained PAT scoped to this repo's Actions: write) to
-POST workflow_dispatch. If it expires, the Worker trigger returns 500. To reset:
-
-```bash
-cd cloudflare-trigger
-npx wrangler secret put GH_PAT   # paste the new PAT
-```
+The two CF-Worker findings above were resolved not by redeploying the Worker but by
+**retiring it entirely** and moving to Upstash QStash (see "Follow-up" below). The
+`cloudflare-trigger/` directory and its `wrangler.toml` / `CLOUDFLARE_API_TOKEN`
+workflow have been **removed from the repo** — the historical wrangler-redeploy /
+token-regeneration steps no longer apply. (Cloudflare Workers AI is still used for
+FLUX.2 thumbnail backgrounds — that's a separate product and is unaffected.)
 
 ## One-line summary
 
 | What you saw | The truth | Fix? |
 |---|---|---|
-| GH ran on Sunday + an extra long video | Live CF cron was the old one (incl. weekends), out of sync with the repo | Yes: redeploy `wrangler deploy` |
+| GH ran on Sunday + an extra long video | Live CF cron was the old one (incl. weekends), out of sync with the repo | Superseded — CF Worker retired, replaced by QStash |
 | A Short on Sunday too | By design: scheduled by the 06-06 run for the next day | No |
-| API can't read the live cron | `CLOUDFLARE_API_TOKEN` expired | Yes: regenerate the token |
+| API can't read the live cron | `CLOUDFLARE_API_TOKEN` expired | Moot — Worker removed |
 
 ---
 
