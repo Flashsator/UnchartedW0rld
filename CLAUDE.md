@@ -96,7 +96,12 @@ on-screen text unchanged) — localization is discovery metadata only.
   `youtube.upload`, `youtube`, `youtube.force-ssl`, `yt-analytics.readonly`
   (`scripts/bootstrap_youtube_token.ts` requests all four; re-mint there to change).
 - **Schedule:** `PUBLISH_WEEKDAYS_UTC = [1,3,5]`; `WEEKDAY_SERIES_MAP` = Mon→animals,
-  Wed→insects, Fri→plants. Shorts: Mon/Wed → 1 short, Fri → 2.
+  Wed→insects, Fri→plants. Shorts (`planShortsForToday` in `src/shortsGen.ts`):
+  every long-video run emits a **same-day teaser** (section 0 = cold-open hook,
+  staggered to `PUBLISH_HOUR_UTC + 2` ≈ 21:00 UTC so it funnels into the
+  just-dropped long video) **plus** later-section shorts dripped onto the
+  off-days, so every weekday gets one and no two reuse a section: Mon/Wed → 2
+  shorts (same-day + next-day), Fri → 3 (same-day + Sat + Sun).
 - **Trigger:** an **Upstash QStash** schedule (cron `0 13 * * 1,3,5` UTC) POSTs a
   `workflow_dispatch` to `daily.yml` — the **sole** trigger. The old Cloudflare
   Worker (`cloudflare-trigger/`) and GitHub `schedule:` cron are retired/removed; the

@@ -13,36 +13,53 @@ const MAX_SHORTS_SEC = 55;
 // short doesn't cut off abruptly.
 const OUTRO_SEC = 2.6;
 
+// Same-day teaser short publishes a couple hours AFTER the long video (which
+// lands at PUBLISH_HOUR_UTC) so the two don't split the launch slot and the
+// short can funnel viewers back to the already-live long video.
+const SAME_DAY_SHORT_HOUR_UTC = PUBLISH_HOUR_UTC + 2;
+
 export function planShortsForToday(weekdayUtc: number): ShortsPlanEntry[] {
   const override = process.env.SHORTS_PLAN_WEEKDAY;
   const effective = override !== undefined ? Number.parseInt(override, 10) : weekdayUtc;
   if (override !== undefined) {
     log(`Shorts: SHORTS_PLAN_WEEKDAY=${override} overrides real UTC weekday ${weekdayUtc}`);
   }
-  // Long videos publish Mon/Wed/Fri (1/3/5). Each long-video run also produces
-  // shorts scheduled onto the off-days so 2/4/6/7 all get a short:
-  //   Mon (animals) → Tue short (+1d)
-  //   Wed (insects) → Thu short (+1d)   [no +2d: Fri is now a long-video day]
-  //   Fri (plants)  → Sat (+1d) + Sun (+2d) shorts, both from the Fri episode
+  // Long videos publish Mon/Wed/Fri (1/3/5). Each long-video run produces a
+  // same-day teaser short (section 0 = the cold-open hook, staggered ~2h after
+  // the long) PLUS shorts dripped onto the off-days from later sections, so
+  // every day of the week gets a short and no two reuse the same section:
+  //   Mon (animals) → Mon teaser (+0d, sec 0) + Tue short (+1d, sec 3)
+  //   Wed (insects) → Wed teaser (+0d, sec 0) + Thu short (+1d, sec 3)
+  //   Fri (plants)  → Fri teaser (+0d, sec 0) + Sat (+1d, sec 3) + Sun (+2d, sec 5)
+  const sameDayTeaser: ShortsPlanEntry = {
+    sectionIdx: 0,
+    daysAhead: 0,
+    publishHourUtc: SAME_DAY_SHORT_HOUR_UTC,
+  };
   switch (effective) {
     case 1:
-      return [{ sectionIdx: 0, daysAhead: 1 }];
+      return [sameDayTeaser, { sectionIdx: 3, daysAhead: 1 }];
     case 3:
-      return [{ sectionIdx: 0, daysAhead: 1 }];
+      return [sameDayTeaser, { sectionIdx: 3, daysAhead: 1 }];
     case 5:
       return [
-        { sectionIdx: 0, daysAhead: 1 },
-        { sectionIdx: 4, daysAhead: 2 },
+        sameDayTeaser,
+        { sectionIdx: 3, daysAhead: 1 },
+        { sectionIdx: 5, daysAhead: 2 },
       ];
     default:
       return [];
   }
 }
 
-export function publishAtFor(daysAhead: number, baseDate: Date = new Date()): Date {
+export function publishAtFor(
+  daysAhead: number,
+  baseDate: Date = new Date(),
+  hourUtc: number = PUBLISH_HOUR_UTC,
+): Date {
   const d = new Date(baseDate);
   d.setUTCDate(d.getUTCDate() + daysAhead);
-  d.setUTCHours(PUBLISH_HOUR_UTC, 0, 0, 0);
+  d.setUTCHours(hourUtc, 0, 0, 0);
   return d;
 }
 

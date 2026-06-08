@@ -143,6 +143,10 @@ export type RenderManifest = {
 export type ShortsPlanEntry = {
   sectionIdx: number;
   daysAhead: number;
+  // Optional UTC hour override for the publish slot. Same-day teaser shorts
+  // stagger a couple hours after the long video; off-day shorts omit this and
+  // fall back to PUBLISH_HOUR_UTC.
+  publishHourUtc?: number;
 };
 
 export type ShortsManifest = {

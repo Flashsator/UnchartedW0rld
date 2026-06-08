@@ -14,7 +14,7 @@ Three videos per week on a **fixed weekday → topic** mapping, anchored to **Ta
 | 週三 (Wed) | 昆蟲 Insects | Tiny Titans (`insects`) | 21:00 | 13:00 |
 | 週五 (Fri) | 植物 Plants | Rooted Anomalies (`plants`) | 21:00 | 13:00 |
 
-Each long-video run also drips **Shorts onto the off-days**, derived from that day's episode: 週一→週二, 週三→週四, 週五→週六+週日 (週六/週日 both come from Friday's plants episode). So Shorts publish 週二/週四/週六/週日 (Tue/Thu/Sat/Sun).
+Each long-video run also produces **Shorts**, all derived from that day's episode. It publishes a **same-day teaser** (the cold-open hook section, staggered ~2h after the long video so it funnels viewers into the fresh upload) **plus** later-section Shorts dripped onto the off-days, so **every day of the week gets a Short** and no two reuse the same section: 週一→週一+週二, 週三→週三+週四, 週五→週五+週六+週日 (週六/週日 both come from Friday's plants episode).
 
 The schedule is fired by an **Upstash QStash schedule** (cron `0 13 * * 1,3,5` UTC), which POSTs a `workflow_dispatch` to `daily.yml` via the GitHub REST API. This is the **sole** trigger — the old Cloudflare Worker and GitHub native `schedule:` cron were both retired (see `docs/scheduling-troubleshooting.md`). Manual fallback: `gh workflow run "Daily video" --ref main`.
 

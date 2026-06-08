@@ -366,7 +366,14 @@ async function runShortsPipeline(
       continue;
     }
 
-    const publishAt = publishAtFor(entry.daysAhead);
+    // Same-day teasers (daysAhead 0) normally resolve to a future slot (run
+    // starts 13:00 UTC, teaser publishes ~21:00 UTC). Guard the late-dispatch
+    // edge: a past publishAt is rejected by the YouTube API, so fall back to a
+    // fixed offset from now.
+    let publishAt = publishAtFor(entry.daysAhead, new Date(), entry.publishHourUtc);
+    if (publishAt.getTime() <= Date.now()) {
+      publishAt = new Date(Date.now() + PUBLISH_OFFSET_HOURS * 3600_000);
+    }
     const shortsBlurb = await generateShortsBlurb(sm.shortsTitle, sm.hook, episode.description);
     const shortsEpisode: Episode = {
       title: sm.shortsTitle,
