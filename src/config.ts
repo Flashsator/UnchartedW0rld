@@ -49,6 +49,18 @@ export const YT_CLIENT_SECRET = process.env.YT_CLIENT_SECRET ?? '';
 export const YT_REFRESH_TOKEN = process.env.YT_REFRESH_TOKEN ?? '';
 export const YT_CHANNEL_ID = process.env.YT_CHANNEL_ID ?? '';
 
+// --- Analytics feedback loop (opt-in) ---------------------------------------
+// When ENABLE_ANALYTICS_FEEDBACK=1, the pipeline pulls the channel's
+// best-performing past titles (ranked by click-through + retention) and feeds
+// them to the script generator as POSITIVE examples — the counterpart to the
+// existing already-published "avoid" list. OFF by default: it needs a
+// YT_REFRESH_TOKEN minted with the `yt-analytics.readonly` scope, otherwise the
+// YouTube Analytics API returns 403 and the loop quietly no-ops (non-fatal).
+export const ENABLE_ANALYTICS_FEEDBACK = process.env.ENABLE_ANALYTICS_FEEDBACK === '1';
+// How far back to look for performance data, and how many winners to surface.
+export const ANALYTICS_LOOKBACK_DAYS = Number(process.env.ANALYTICS_LOOKBACK_DAYS ?? 90);
+export const ANALYTICS_TOP_N = Number(process.env.ANALYTICS_TOP_N ?? 8);
+
 // Appended to every long-form description (after chapters, before attribution)
 // so each video carries a consistent channel pitch + subscribe CTA. The
 // ?sub_confirmation=1 link only opens the subscribe prompt on a /channel/UC...

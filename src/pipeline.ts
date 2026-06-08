@@ -5,6 +5,7 @@ import {
   CHANNEL_FOOTER,
   COLD_OPEN_SEC,
   DRY_RUN,
+  ENABLE_ANALYTICS_FEEDBACK,
   FORCE_RUN,
   INTER_SECTION_GAP_SEC,
   INTERLUDE_SEC,
@@ -29,6 +30,7 @@ import { renderVideo, renderShorts } from './render.js';
 import { buildChapters, muxAudio, muxShortsAudio, writeSrt } from './mux.js';
 import { buildAttribution, shortsMusicLine } from './attribution.js';
 import { listUploadedTitles, uploadVideo } from './youtube.js';
+import { fetchTopPerformingTitles } from './analytics.js';
 import { extractIconEvents } from './iconExtractor.js';
 import { computeCutTimes } from './cuts.js';
 import { buildShortsManifest, planShortsForToday, publishAtFor } from './shortsGen.js';
@@ -87,7 +89,24 @@ async function main(): Promise<void> {
   if (priorTitles.length > 0) {
     log(`Topic dedup: avoiding ${priorTitles.length} already-published titles.`);
   }
-  const { episode, hookPattern } = await generateEpisode(series, structure, voice, subTheme, priorTitles);
+  // Opt-in feedback loop: steer the new title toward the shapes that earned the
+  // most clicks + watch-time on this channel. Best-effort — no-ops to [] when
+  // disabled or when the token lacks the analytics scope.
+  let winningTitles: string[] = [];
+  if (ENABLE_ANALYTICS_FEEDBACK) {
+    winningTitles = await fetchTopPerformingTitles();
+    if (winningTitles.length > 0) {
+      log(`Analytics feedback: steering title toward ${winningTitles.length} proven winners.`);
+    }
+  }
+  const { episode, hookPattern } = await generateEpisode(
+    series,
+    structure,
+    voice,
+    subTheme,
+    priorTitles,
+    winningTitles,
+  );
   fs.writeFileSync(path.join(runDir, 'episode.json'), JSON.stringify(episode, null, 2));
 
   log('Step 2/8: Synthesize narration');

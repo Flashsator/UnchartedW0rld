@@ -9,7 +9,7 @@
     "render": "remotion render remotion/index.ts MainVideo out/video.mp4",
     "studio": "remotion studio remotion/index.ts",
     "tsc": "tsc --noEmit",
-    "test": "node --import tsx --test test/chunker.test.ts test/cuts.test.ts test/shortsGen.test.ts test/stock.test.ts"
+    "test": "node --import tsx --test test/analytics.test.ts test/chunker.test.ts test/cuts.test.ts test/shortsGen.test.ts test/stock.test.ts"
   },
   "dependencies": {
     "@remotion/bundler": "^4.0.468",

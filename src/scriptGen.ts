@@ -205,6 +205,7 @@ export async function generateEpisode(
   voice: Voice,
   subTheme: string,
   avoidTitles: string[] = [],
+  winningTitles: string[] = [],
 ): Promise<{ episode: Episode; hookPattern: string }> {
   const hook = pickHookPattern(structure);
   // Feed recently-published titles to the model so it steers away from topics
@@ -216,12 +217,23 @@ export async function generateEpisode(
           .map((t) => `- ${t}`)
           .join('\n')}`
       : '';
+  // The positive counterpart to avoidBlock: titles that earned the most clicks
+  // and watch-time on this channel. The model studies their SHAPE (curiosity
+  // gap, concrete stakes, verb energy) and reproduces it for a new subject — it
+  // must not copy their wording or topic (those are in the avoid list anyway).
+  const winBlock =
+    winningTitles.length > 0
+      ? `\n\nThese past titles performed BEST on this channel (highest click-through and watch-time). Study what makes them irresistible — the framing, the curiosity gap, the concrete stakes, the verb energy — then write your NEW title in that same spirit for a DIFFERENT subject. Do NOT copy their wording or reuse their topics:\n${winningTitles
+          .slice(0, 8)
+          .map((t) => `- ${t}`)
+          .join('\n')}`
+      : '';
   const userPrompt = `Series: ${series.name}
 Theme: ${series.theme}
 Sub-topic focus: ${subTheme}
 Structural template: ${structure.label} (${structure.key})
 
-Pick ONE specific surprising topic within this sub-topic focus that fits a ${TARGET_MINUTES}-minute mini-documentary. Use the "${hook.name}" hook style for the opening. Follow the ${structure.label} per-section role specification exactly. Write the full script JSON now.${avoidBlock}`;
+Pick ONE specific surprising topic within this sub-topic focus that fits a ${TARGET_MINUTES}-minute mini-documentary. Use the "${hook.name}" hook style for the opening. Follow the ${structure.label} per-section role specification exactly. Write the full script JSON now.${avoidBlock}${winBlock}`;
 
   const fullPrompt = `${buildSystemPrompt(hook, structure, voice, subTheme)}\n\n---\n\n${userPrompt}`;
 
