@@ -128,7 +128,11 @@ export type RenderManifest = {
     overlays?: SectionOverlay[];
   }>;
   interludes: Interlude[];
-  outro: { durationSec: number };
+  // watchNextTitle: the channel's best-performing past video title (from the
+  // analytics feedback loop), surfaced on the end card to point viewers at
+  // another video and lift session watch-time. Optional — absent on a young
+  // channel with no analytics yet, in which case the outro stays a plain CTA.
+  outro: { durationSec: number; watchNextTitle?: string };
   bgmPath: string;
   bgmVolume: number;
   totalDuration: number;

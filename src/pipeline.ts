@@ -222,7 +222,7 @@ async function main(): Promise<void> {
       overlays: episode.sections[i]?.overlays,
     })),
     interludes,
-    outro: { durationSec: OUTRO_SUBSCRIBE_SEC },
+    outro: { durationSec: OUTRO_SUBSCRIBE_SEC, watchNextTitle: winningTitles[0] },
     bgmPath,
     bgmVolume: BGM_VOLUME,
     totalDuration,

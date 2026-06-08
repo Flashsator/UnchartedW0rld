@@ -69,10 +69,8 @@ Pixabay/Coverr/Unsplash + BGM picking), `render.ts`/`remotion/` (compositions),
 
 ## Config & env overrides
 
-- **Script-generation model:** `src/scriptGen.ts:505` `CLAUDE_MODEL` (currently
+- **Script-generation model:** `src/scriptGen.ts` `CLAUDE_MODEL` (currently
   `claude-opus-4-8`). This is the live one; it's passed to `claude -p --model`.
-  ⚠️ `src/config.ts:70` also exports a `CLAUDE_MODEL` (sonnet) but nothing imports
-  it — stale duplicate, ignore it (or delete in a cleanup).
 - **Schedule:** `PUBLISH_WEEKDAYS_UTC = [1,3,5]`; `WEEKDAY_SERIES_MAP` = Mon→animals,
   Wed→insects, Fri→plants. Shorts: Mon/Wed → 1 short, Fri → 2.
 - **Day numbering** uses `new Date().getUTCDay()` (0=Sun … 6=Sat).

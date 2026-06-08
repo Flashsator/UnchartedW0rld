@@ -124,7 +124,7 @@ Shape:
   "description": "string, 600-1000 chars, YouTube description with 3 hashtags at the end. The FIRST sentence must state the single most surprising fact of the episode (the payoff) before any location or setup — it is the only line viewers see before the fold, so it must hook. Then expand.",
   "tags": ["10-15 single-word or 2-word tags. Include 3-4 BROAD high-search-volume terms a curious non-expert would actually type (e.g. 'weird animals', 'nature documentary', 'insect defense', 'did you know') alongside the precise scientific names — not only academic jargon"],
   "subject": "string, 1-3 words — the ONE concrete, photographable thing this whole episode is about (a creature, object, place, or person), e.g. 'cave spider', 'glass frog', 'Roman aqueduct'. This is the visual anchor for EVERY b-roll query below. Must be a real, searchable noun, not an abstract idea.",
-  "thumbnailConcept": "string, 8-20 words — a SINGLE concrete, photographable real-world scene for the thumbnail background that instantly reads as this topic to a stranger AND is visually dramatic through CONTRAST: a bright, vividly-lit, sharply-focused subject that pops off the frame, saturated color, a tense moment or unexpected pose, crisp directional or rim light that sculpts the subject. The subject must stay BRIGHT and clearly visible — 'dramatic' must NOT mean a dark, dim, or muddy image; never bury the subject in shadow (it renders unreadable on a phone feed). Describe ONE clear subject + setting + lighting. NO abstract textures, NO extreme macro close-ups, NO collages, NO flat evenly-lit specimen shots, NO overall-dark scenes. Good: 'a single termite filling the frame, its back glowing vivid electric blue under crisp directional light, sharp against a clean contrasting background'. Bad: 'a termite on pale wood with a small blue patch, flat lighting', 'a dim dark moody scene', 'micro-detail biology', 'abstract neural patterns'.",
+  "thumbnailConcept": "string, 8-20 words — a SINGLE concrete, photographable real-world scene for the thumbnail background that instantly reads as this topic to a stranger AND is visually dramatic through CONTRAST: a bright, vividly-lit, sharply-focused subject that pops off the frame, saturated color, a tense moment or unexpected pose, crisp directional or rim light that sculpts the subject. The subject must stay BRIGHT and clearly visible — 'dramatic' must NOT mean a dark, dim, or muddy image; never bury the subject in shadow (it renders unreadable on a phone feed). The subject must occupy a LARGE central portion of the frame (fill roughly half its width) so it stays instantly recognizable at small phone-feed thumbnail size — a tiny subject lost in a wide scene reads as nothing. Describe ONE clear subject + setting + lighting. NO abstract textures, NO extreme macro close-ups, NO collages, NO flat evenly-lit specimen shots, NO overall-dark scenes. Good: 'a single termite filling the frame, its back glowing vivid electric blue under crisp directional light, sharp against a clean contrasting background'. Bad: 'a termite on pale wood with a small blue patch, flat lighting', 'a dim dark moody scene', 'micro-detail biology', 'abstract neural patterns'.",
   "thumbnailWord": "string, ONE punchy uppercase word (3-8 letters) for the thumbnail caption — the single idea a viewer should feel. e.g., 'LISTEN', 'BURIED', 'WRONG'. Must NOT be a structural word like CASE/FILE/PROFILE.",
   "sections": [
     {
@@ -195,6 +195,7 @@ ${rolesBlock}
 Pacing rules (every section):
 - Vary sentence length — short, punchy clues mixed with longer descriptive stacks.
 - Every section except the last ends on a hook into the next: an unresolved detail, a "but here is where it stops making sense", an unanswered question that the next section will pick up.
+- Every section except section 0 OPENS by advancing the thread, not recapping: drop straight into the next concrete beat (or land the answer the prior section withheld) within the first sentence. Never summarize what was just said — a recap is where viewers leave.
 - Do NOT do mini-twists in every section. Follow the structural template above — the reversal / discovery / deepest layer happens at the section the template says, not earlier.
 - Section 1 introduces the specific subject by name without explaining everything.`;
 }
@@ -223,7 +224,7 @@ export async function generateEpisode(
   // must not copy their wording or topic (those are in the avoid list anyway).
   const winBlock =
     winningTitles.length > 0
-      ? `\n\nThese past titles performed BEST on this channel (highest click-through and watch-time). Study what makes them irresistible — the framing, the curiosity gap, the concrete stakes, the verb energy — then write your NEW title in that same spirit for a DIFFERENT subject. Do NOT copy their wording or reuse their topics:\n${winningTitles
+      ? `\n\nThese past titles performed BEST on this channel (highest click-through and watch-time). Study what makes them irresistible — the framing, the curiosity gap, the concrete stakes, the verb energy — then write your NEW title in that same spirit for a DIFFERENT subject. Let them also steer your ANGLE: within today's sub-topic focus, lean toward the KIND of surprise these winners promised (the same flavor of curiosity gap or stakes), not a flat encyclopedic overview. Do NOT copy their wording or reuse their topics:\n${winningTitles
           .slice(0, 8)
           .map((t) => `- ${t}`)
           .join('\n')}`
@@ -330,7 +331,7 @@ const OVERLAY_ALLOWED_SECTIONS = new Set([2, 3, 4, 5]);
 // and "1850." all reduce to a bare comparable form ("12000", "47", "1850").
 // Used to keep compare-overlay bar magnitudes honest: the model may only chart
 // numbers it actually said, never invented 1-100 placeholders.
-function spokenNumbers(narration: string): Set<string> {
+export function spokenNumbers(narration: string): Set<string> {
   const out = new Set<string>();
   for (const m of narration.matchAll(/\d[\d,]*(?:\.\d+)?/g)) {
     const cleaned = m[0].replace(/,/g, '');
@@ -340,7 +341,7 @@ function spokenNumbers(narration: string): Set<string> {
   return out;
 }
 
-function sanitizeOverlay(raw: unknown, narration: string): SectionOverlay | null {
+export function sanitizeOverlay(raw: unknown, narration: string): SectionOverlay | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   const kind = typeof o.kind === 'string' ? o.kind : '';

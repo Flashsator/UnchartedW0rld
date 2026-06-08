@@ -79,8 +79,6 @@ export const CHANNEL_FOOTER = [
     : '👉 Subscribe for a new documentary every Monday, Wednesday and Friday.',
 ].join('\n');
 
-export const CLAUDE_MODEL = 'claude-sonnet-4-6';
-
 export const VIDEO_W = 1920;
 export const VIDEO_H = 1080;
 export const VIDEO_FPS = 30;

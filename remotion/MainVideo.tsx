@@ -59,7 +59,7 @@ export const MainVideo: React.FC<{ manifest: RenderManifest }> = ({ manifest }) 
       })}
 
       <Sequence from={outroStart} durationInFrames={outroFrames}>
-        <Outro />
+        <Outro watchNextTitle={manifest.outro.watchNextTitle} />
       </Sequence>
     </AbsoluteFill>
   );
