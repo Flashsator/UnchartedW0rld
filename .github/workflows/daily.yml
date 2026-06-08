@@ -164,6 +164,13 @@ jobs:
           YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
           YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
           YT_CHANNEL_ID: ${{ secrets.YT_CHANNEL_ID }}
+          # Analytics feedback loop: rank past videos by CTR/retention/views and
+          # surface the top title in the Outro "Watch next" end card + as a
+          # title-generation hint. Best-effort/non-fatal — if YT_REFRESH_TOKEN
+          # lacks the `yt-analytics.readonly` scope or there's no data yet, it
+          # logs the 403 and falls back to the plain subscribe CTA. Re-mint
+          # YT_REFRESH_TOKEN with that scope to actually activate the card.
+          ENABLE_ANALYTICS_FEEDBACK: '1'
           SERIES_KEY: ${{ inputs.series_key }}
           SUB_THEME: ${{ inputs.sub_theme }}
           STRUCTURE_KEY: ${{ inputs.structure_key }}
