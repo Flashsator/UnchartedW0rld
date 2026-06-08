@@ -19,6 +19,12 @@ const authUrl = oauth.generateAuthUrl({
   scope: [
     'https://www.googleapis.com/auth/youtube.upload',
     'https://www.googleapis.com/auth/youtube',
+    // Lets uploadCaption() insert a real selectable caption track via
+    // captions.insert (otherwise it 403s and the burned-in SRT is the only copy).
+    'https://www.googleapis.com/auth/youtube.force-ssl',
+    // Powers the analytics feedback loop (fetchTopPerformingTitles): ranks past
+    // videos by CTR/retention so the Outro "Watch next" card + title hints work.
+    'https://www.googleapis.com/auth/yt-analytics.readonly',
   ],
 });
 
