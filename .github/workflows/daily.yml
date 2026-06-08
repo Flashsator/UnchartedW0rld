@@ -1,20 +1,19 @@
 name: Daily video
 
 on:
-  # PRIMARY scheduling is the Cloudflare Worker in cloudflare-trigger/, which
-  # fires workflow_dispatch at 13:00 UTC (sub-minute jitter) for punctual
-  # ~21:00 Taiwan publishing.
+  # SOLE scheduling is now Upstash QStash, which fires this workflow via the
+  # GitHub workflow_dispatch REST API at 13:00 UTC on Mon/Wed/Fri (cron
+  # '0 13 * * 1,3,5') for ~21:00 Taiwan publishing. QStash forwards a GH_PAT in
+  # the Authorization header. The previous triggers are retired: the Cloudflare
+  # Worker (cloudflare-trigger/) silently stopped firing when its token expired,
+  # and GitHub's own `schedule:` cron landed hours late under peak load — so
+  # neither is kept even as a safety net.
   #
-  # BACKUP: GitHub's own schedule cron below. It was originally removed because
-  # it lands hours late under peak load — but on 2026-06-06 the CF cron silently
-  # failed to fire at all (no invocation on either side), which is far worse than
-  # being late. So GitHub cron is back purely as a safety net, offset to 15:30 UTC
-  # so the CF run (13:00, <=88min) has finished and recorded the daily upload lock
-  # first. On a normal day the lock (cached in work/.last-upload-date) + the
-  # `daily-video` concurrency group make this backup exit early before any render,
-  # so it only ever publishes when the CF trigger missed entirely.
-  schedule:
-    - cron: '30 15 * * 1,3,5'  # Mon/Wed/Fri 15:30 UTC — backup only; see note above
+  # The daily upload lock (cached in work/.last-upload-date) + the `daily-video`
+  # concurrency group still guard against accidental double-publishing if the
+  # workflow is ever dispatched twice in one day.
+  #
+  # Manual fallback if QStash misses entirely: gh workflow run "Daily video" --ref main
   workflow_dispatch:
     inputs:
       series_key:
