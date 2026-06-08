@@ -40,7 +40,7 @@ export const MainVideo: React.FC<{ manifest: RenderManifest }> = ({ manifest }) 
     <AbsoluteFill style={{ backgroundColor: 'black' }}>
       {introFrames > 0 ? (
         <Sequence from={0} durationInFrames={introFrames}>
-          <ColdOpen visualPath={manifest.coldOpenVisualPath} />
+          <ColdOpen visualPath={manifest.coldOpenVisualPath} hook={manifest.hook} />
         </Sequence>
       ) : null}
       {placements.map((p, k) => {

@@ -7,6 +7,7 @@
   "scripts": {
     "run": "tsx src/pipeline.ts",
     "render": "remotion render remotion/index.ts MainVideo out/video.mp4",
+    "frame": "remotion still remotion/index.ts MainVideo out/frame.png --frame=15",
     "studio": "remotion studio remotion/index.ts",
     "tsc": "tsc --noEmit",
     "test": "node --import tsx --test test/analytics.test.ts test/chunker.test.ts test/cuts.test.ts test/shortsGen.test.ts test/stock.test.ts"
