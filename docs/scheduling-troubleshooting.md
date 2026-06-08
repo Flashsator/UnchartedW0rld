@@ -1,131 +1,144 @@
-# 排程與觸發 — 疑難排解筆記（2026-06-08 調查）
+# Scheduling & triggering — troubleshooting notes (2026-06-08 investigation)
 
-這份筆記記錄一次排程異常的調查：**為什麼週日（非發布日）也跑了 pipeline，
-而且看起來「Shorts 也發了」**。給未來的自己/agent 參考。
+These notes record an investigation into a scheduling anomaly: **why the pipeline
+ran on a Sunday (a non-publish day), and why it looked like "a Short went out too."**
+For future me / future agents.
 
-## 排程架構（先搞懂這個）
+## Scheduling architecture (understand this first)
 
 ```
 Cloudflare Worker (uncharted-daily-trigger)
-  └─ cron 觸發 → 對 GitHub 發 workflow_dispatch → 跑 daily.yml 完整 pipeline
-GitHub 內建 cron（備援）
-  └─ Mon/Wed/Fri 15:30 UTC，只在 CF 沒觸發時補（靠 upload lock 早退）
+  └─ cron fires → POSTs workflow_dispatch to GitHub → runs the full daily.yml pipeline
+GitHub built-in cron (backup)
+  └─ Mon/Wed/Fri 15:30 UTC, only fills in when CF didn't fire (exits early via the upload lock)
 ```
 
-- **主排程是 Cloudflare Worker**，不是 GitHub cron。
-- Worker 的 `scheduled()` 是**無條件** dispatch — 它沒有任何「星期判斷」，
-  哪天觸發完全由 `cloudflare-trigger/wrangler.toml` 的 cron 決定。
-- Worker 的 `fetch()`（訪問 Worker URL）**也會觸發一次 dispatch，且無驗證** —
-  次要風險，但不是整點觸發，可從時間戳記區分。
-- pipeline **本身沒有「非發布日就不發」的 gate**。`seriesForToday()` 在沒有
-  對應星期時會走 fallback（用日期輪一個 series），所以**只要 workflow 被觸發，
-  不管哪天它都會發片**。
+> NOTE: this section describes the OLD architecture that was in effect during the
+> investigation. As of 2026-06-08 both the Cloudflare Worker and the GitHub cron are
+> retired — scheduling is now Upstash QStash only. See "Follow-up" at the bottom.
 
-## 這次的兩個發現
+- **The primary schedule was the Cloudflare Worker**, not GitHub cron.
+- The Worker's `scheduled()` dispatches **unconditionally** — it has no "day of week"
+  check; which day it fires is decided entirely by the cron in
+  `cloudflare-trigger/wrangler.toml`.
+- The Worker's `fetch()` (hitting the Worker URL) **also triggers one dispatch, with no
+  auth** — a secondary risk, but it isn't an on-the-hour trigger, so it can be told
+  apart by timestamp.
+- The pipeline **itself has no "don't publish on a non-publish day" gate.**
+  `seriesForToday()` falls back (picks a series by date) when there's no mapping for the
+  weekday, so **once the workflow is triggered it will publish, no matter the day.**
 
-### 1. 線上 Worker 的 cron 跟 repo 不同步（會週末誤觸）
+## The two findings this time
 
-`wrangler.toml` 設定是 `crons = ["0 13 * * 1,3,5"]`（只有 Mon/Wed/Fri），
-但觸發紀錄顯示 **2026-06-07（週日）13:00:09 UTC** 有一次「整點 + 數秒 jitter」
-的 cron 觸發 —— 這是 Cloudflare cron 的特徵，週日不該發生。
+### 1. The live Worker's cron drifted from the repo (causes weekend misfires)
 
-→ **結論：線上部署的是舊版 cron（含週末），從沒被重新部署同步成 repo 的設定。**
-這就是週日多跑一支計畫外影片（`4bFajUx2ydM`, Beast Codex/animals）的根因。
+`wrangler.toml` is set to `crons = ["0 13 * * 1,3,5"]` (Mon/Wed/Fri only), but the
+trigger log shows a cron fire at **2026-06-07 (Sunday) 13:00:09 UTC** with the
+"on-the-hour + a few seconds of jitter" signature — that's the fingerprint of a
+Cloudflare cron, and it should never happen on a Sunday.
 
-> 補充：`CLOUDFLARE_API_TOKEN` 在調查時已驗證失效（`Invalid API Token`），
-> 所以無法用 API 直接讀線上 cron，只能靠觸發紀錄反推。
+→ **Conclusion: the deployed version was running an old cron (including weekends) and
+had never been redeployed to match the repo's config.** That's the root cause of the
+extra unplanned Sunday video (`4bFajUx2ydM`, Beast Codex / animals).
 
-### 2. 「Shorts 也發了」其實是正常設計
+> Aside: `CLOUDFLARE_API_TOKEN` was verified dead during the investigation
+> (`Invalid API Token`), so the live cron couldn't be read via the API — it had to be
+> inferred from the trigger log.
 
-`planShortsForToday()` 的設計是：長片 run 當天「產生」Short，但**排程公開在
-後續的 off-day**：
+### 2. "A Short went out too" was actually by design
+
+`planShortsForToday()` is designed so the long-form run "produces" a Short on its own
+day, but **schedules it to go public on a following off-day**:
 
 ```
-Mon 長片 → Tue 發 short
-Wed 長片 → Thu 發 short
-Fri 長片 → Sat + Sun 發 short（兩支）
-其他天 → 不發
+Mon long → Tue short
+Wed long → Thu short
+Fri long → Sat + Sun shorts (two)
+other days → nothing
 ```
 
-所以在 06-07 看到的那支 Short（`aVToU-9aNos`）是 **06-06 的 run 排到隔天的**，
-**不是** 06-07 的 run 發的 —— 06-07 run 的 log 明寫「Shorts: nothing scheduled
-for today.」。這不是 bug。
+So the Short seen on 06-07 (`aVToU-9aNos`) was **scheduled by the 06-06 run for the next
+day**, **not** published by the 06-07 run — the 06-07 run's log explicitly says
+"Shorts: nothing scheduled for today." Not a bug.
 
-## 修復步驟
+## Fix steps (historical — for the retired CF Worker)
 
-### A. 重新部署 Worker，把 cron 同步成 Mon/Wed/Fri
+### A. Redeploy the Worker to sync the cron to Mon/Wed/Fri
 
-> ⚠️ 先確認 `wrangler.toml` 的 `crons` 真的是你要的發布日（目前是 Mon/Wed/Fri，
-> 跟 `CLAUDE.md` 一致）。deploy 會用它覆蓋線上的舊 cron。
+> ⚠️ First confirm `wrangler.toml`'s `crons` really are the publish days you want
+> (currently Mon/Wed/Fri, matching `CLAUDE.md`). `deploy` uses it to overwrite the live cron.
 
-需要先用「有效的」憑證。兩種擇一：
+You need valid credentials first. Pick one:
 
 ```powershell
-# 方式一：互動式登入（會開瀏覽器，必須你自己在終端機跑）
-#   在 Claude Code 的輸入框打：  ! npx wrangler login
-# 登入後：
+# Option 1: interactive login (opens a browser, you must run it yourself in the terminal)
+#   In the Claude Code input box, type:  ! npx wrangler login
+# After login:
 cd cloudflare-trigger
 npx wrangler deploy
 ```
 
 ```powershell
-# 方式二：用新的 API token（見 B 段產生），不需開瀏覽器
-$env:CLOUDFLARE_API_TOKEN = "<新的 token>"
+# Option 2: use a new API token (generate per section B), no browser needed
+$env:CLOUDFLARE_API_TOKEN = "<new token>"
 cd cloudflare-trigger
 npx wrangler deploy
 ```
 
-- `wrangler deploy` **只更新 code + cron**，**不會動到 `GH_PAT` secret**
-  （那是 `wrangler secret put` 設的），所以部署後觸發功能照常。
-- 若 wrangler 問要用哪個 account，選對應 `uncharted-daily-trigger` 的那個。
+- `wrangler deploy` **only updates code + cron**; it **does not touch the `GH_PAT`
+  secret** (that's set via `wrangler secret put`), so triggering keeps working after deploy.
+- If wrangler asks which account to use, pick the one that owns `uncharted-daily-trigger`.
 
-### B. 重新產生失效的 `CLOUDFLARE_API_TOKEN`
+### B. Regenerate the dead `CLOUDFLARE_API_TOKEN`
 
-1. 到 Cloudflare Dashboard → My Profile → **API Tokens** → Create Token。
-2. 權限至少需要：**Account › Workers Scripts › Edit**
-   （要讀 cron schedules 再加 **Account › Workers Scripts › Read**）。
-3. 產生後，更新專案根目錄 `.env` 的 `CLOUDFLARE_API_TOKEN=`（`.env` 不進 git）。
-4. 驗證：
+1. Cloudflare Dashboard → My Profile → **API Tokens** → Create Token.
+2. Minimum permission: **Account › Workers Scripts › Edit**
+   (add **Account › Workers Scripts › Read** if you also want to read cron schedules).
+3. Once generated, update `CLOUDFLARE_API_TOKEN=` in the project-root `.env` (`.env` is gitignored).
+4. Verify:
    ```bash
    curl -s https://api.cloudflare.com/client/v4/user/tokens/verify \
-     -H "Authorization: Bearer <新 token>"
-   # 期望 "success": true, "status": "active"
+     -H "Authorization: Bearer <new token>"
+   # expect "success": true, "status": "active"
    ```
 
-### C.（建議）確認 GH_PAT secret 仍有效
+### C. (Recommended) Confirm the GH_PAT secret is still valid
 
-Worker 用 `GH_PAT`（fine-grained PAT，scope：此 repo 的 Actions: write）去發
-workflow_dispatch。若它過期，Worker 觸發會 500。重設方式：
+The Worker uses `GH_PAT` (a fine-grained PAT scoped to this repo's Actions: write) to
+POST workflow_dispatch. If it expires, the Worker trigger returns 500. To reset:
 
 ```bash
 cd cloudflare-trigger
-npx wrangler secret put GH_PAT   # 貼上新的 PAT
+npx wrangler secret put GH_PAT   # paste the new PAT
 ```
 
-## 一句話總結
+## One-line summary
 
-| 你看到的 | 真相 | 要不要修 |
+| What you saw | The truth | Fix? |
 |---|---|---|
-| 週日 GH 有跑 + 多一支長片 | 線上 CF cron 是舊版、含週末，沒同步 repo | 要：重新 `wrangler deploy` |
-| 週日也有 Short | 正常設計：06-06 run 排到隔天公開的 | 不用 |
-| API 查不到線上 cron | `CLOUDFLARE_API_TOKEN` 過期失效 | 要：重新產生 token |
+| GH ran on Sunday + an extra long video | Live CF cron was the old one (incl. weekends), out of sync with the repo | Yes: redeploy `wrangler deploy` |
+| A Short on Sunday too | By design: scheduled by the 06-06 run for the next day | No |
+| API can't read the live cron | `CLOUDFLARE_API_TOKEN` expired | Yes: regenerate the token |
 
 ---
 
-## 後續：改用 Upstash QStash 當唯一觸發（2026-06-08）
+## Follow-up: switched to Upstash QStash as the sole trigger (2026-06-08)
 
-CF Worker 的 token 過期後就靜默不觸發，GitHub 內建 cron 又常常遲到數小時，
-兩個都不可靠。所以 2026-06-08 起：
+The CF Worker silently stopped firing once its token expired, and GitHub's built-in cron
+routinely lands hours late — neither is reliable. So as of 2026-06-08:
 
-- **移除** `daily.yml` 的 `schedule:` cron（commit `8501997`），`on:` 只剩 `workflow_dispatch:`。
-- **CF Worker 排程停用**。
-- **唯一觸發 = Upstash QStash**：一個 schedule（cron `0 13 * * 1,3,5` = Mon/Wed/Fri
-  13:00 UTC = 台灣 21:00）對 GitHub 的 `daily.yml` 發 `workflow_dispatch`，
-  轉發一顆 GitHub PAT（`Upstash-Forward-Authorization`，需此 repo 的 Actions: write）。
-- 重複發片仍由 upload lock（`work/.last-upload-date`）+ `daily-video` concurrency group 擋。
-- **漏觸發時手動補**：`gh workflow run "Daily video" --ref main`。
+- **Removed** the `schedule:` cron from `daily.yml` (commit `8501997`); its `on:` is now
+  `workflow_dispatch:` only.
+- **CF Worker schedule retired.**
+- **Sole trigger = Upstash QStash:** one schedule (cron `0 13 * * 1,3,5` = Mon/Wed/Fri
+  13:00 UTC = Taiwan 21:00) POSTs a `workflow_dispatch` to GitHub's `daily.yml`,
+  forwarding a GitHub PAT (`Upstash-Forward-Authorization`, needs this repo's Actions: write).
+- Double-publishing is still guarded by the upload lock (`work/.last-upload-date`) + the
+  `daily-video` concurrency group.
+- **Manual fallback if a trigger is missed:** `gh workflow run "Daily video" --ref main`.
 
-建立 schedule（token 從 `.env` 讀，不要把值貼進終端歷史/聊天）：
+Create the schedule (read tokens from `.env`; never paste their values into terminal
+history / chat):
 
 ```bash
 curl -s -X POST \
@@ -139,35 +152,39 @@ curl -s -X POST \
   -d '{"ref":"main"}'
 ```
 
-## ⚠️ QStash schedule 會洩漏轉發的 token — 絕對不要 `GET /v2/schedules`
+## ⚠️ QStash schedules leak the forwarded token — NEVER `GET /v2/schedules`
 
-**背景**：GitHub PAT 是放在 `Upstash-Forward-Authorization: Bearer <token>` header 裡
-建立排程的。QStash 會把這個 header **原封不動、明文儲存在每一個 schedule 裡**。
+**Background:** the GitHub PAT is passed in the
+`Upstash-Forward-Authorization: Bearer <token>` header at schedule creation. QStash
+stores that header **verbatim, in plaintext, inside every schedule.**
 
-**地雷**：任何「列出/讀取排程」的呼叫都會把存的 token **明文吐回來**：
-- `GET https://qstash.upstash.io/v2/schedules`（列全部 → 吐出**每一個**排程的 token）
-- `GET https://qstash.upstash.io/v2/schedules/{id}`（單一,也含完整 header）
+**The trap:** any "list / read schedule" call echoes the stored token back in cleartext:
+- `GET https://qstash.upstash.io/v2/schedules` — lists ALL, dumps **every** schedule's token
+- `GET https://qstash.upstash.io/v2/schedules/{id}` — single, also includes the full header
 
-只要這輸出落到任何會被保存的地方（聊天記錄、CI log、終端截圖、貼給別人），
-那些 PAT 就等於外洩，必須當作已洩漏處理。**這在 2026-06-08 真的發生過**：用一個
-列出全部排程的步驟「驗證」，把 `.env` 的 `GITHUB_TOKEN` 連同另一個專案共用的 PAT
-一起印了出來，兩顆都得輪換。
+If that output lands anywhere persistent (chat logs, CI logs, terminal screenshots,
+pasted to someone), treat those PATs as compromised. **This actually happened on
+2026-06-08:** a "verify" step that listed all schedules printed `.env`'s `GITHUB_TOKEN`
+plus a PAT shared with another project — both had to be rotated.
 
-**規則**：
-1. **永遠不要**為了「檢查排程」而跑 `GET /v2/schedules`。
-2. 建立排程後，只看 `POST` 回傳的 `scheduleId` 來確認成功就夠了。
-3. 真要讀排程做驗證，**一定要過濾掉 header 欄位**，只取非敏感欄位：
+**Rules:**
+1. **Never** run `GET /v2/schedules` just to "check" a schedule.
+2. After creating a schedule, the `scheduleId` from the `POST` response is all you need.
+3. If you must read a schedule, **project away the header** and select only safe fields:
    ```bash
    curl -s "https://qstash.upstash.io/v2/schedules/<ID>" \
      -H "Authorization: Bearer $QSTASH_TOKEN" \
    | jq '{scheduleId, cron, destination, method, body, isPaused, nextScheduleTime}'
    ```
-   （`jq` 只挑安全欄位，`.header` 永遠不輸出，token 不會進到畫面/log。）
+   (`jq` keeps only safe fields; `.header` is never emitted, so the token never hits
+   stdout/logs.)
 
-**萬一已經吐出來了**：把那顆 PAT 當作已洩漏 →
-(a) 先生新 PAT；(b) **刪掉舊排程、用新 token 重建**（QStash 不能改已存的 header，
-只能 delete + recreate）；(c) 排程全部重建好後，**再去 GitHub 撤銷舊 PAT**
-（生新的不會讓舊的失效）。
+**If a token was already exposed:** treat the PAT as leaked →
+(a) mint a new PAT; (b) **delete the old schedule(s) and recreate with the new token**
+(QStash can't edit a stored header — delete + recreate only); (c) only after every
+schedule is recreated, **revoke the old PAT on GitHub** (minting a new one does NOT
+disable the old one).
 
-**通則**：把任何 QStash 排程的讀取輸出當成機密。轉發 token 用最小權限的
-fine-grained PAT（例如只給目標 repo 的 `Actions: write`），洩漏時影響面才最小。
+**General rule:** treat any QStash schedule read-output as secret. Forward a
+least-privilege fine-grained PAT (e.g. only the target repo's `Actions: write`) so a
+leak has the smallest blast radius.
