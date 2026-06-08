@@ -109,3 +109,65 @@ npx wrangler secret put GH_PAT   # 貼上新的 PAT
 | 週日 GH 有跑 + 多一支長片 | 線上 CF cron 是舊版、含週末，沒同步 repo | 要：重新 `wrangler deploy` |
 | 週日也有 Short | 正常設計：06-06 run 排到隔天公開的 | 不用 |
 | API 查不到線上 cron | `CLOUDFLARE_API_TOKEN` 過期失效 | 要：重新產生 token |
+
+---
+
+## 後續：改用 Upstash QStash 當唯一觸發（2026-06-08）
+
+CF Worker 的 token 過期後就靜默不觸發，GitHub 內建 cron 又常常遲到數小時，
+兩個都不可靠。所以 2026-06-08 起：
+
+- **移除** `daily.yml` 的 `schedule:` cron（commit `8501997`），`on:` 只剩 `workflow_dispatch:`。
+- **CF Worker 排程停用**。
+- **唯一觸發 = Upstash QStash**：一個 schedule（cron `0 13 * * 1,3,5` = Mon/Wed/Fri
+  13:00 UTC = 台灣 21:00）對 GitHub 的 `daily.yml` 發 `workflow_dispatch`，
+  轉發一顆 GitHub PAT（`Upstash-Forward-Authorization`，需此 repo 的 Actions: write）。
+- 重複發片仍由 upload lock（`work/.last-upload-date`）+ `daily-video` concurrency group 擋。
+- **漏觸發時手動補**：`gh workflow run "Daily video" --ref main`。
+
+建立 schedule（token 從 `.env` 讀，不要把值貼進終端歷史/聊天）：
+
+```bash
+curl -s -X POST \
+  "https://qstash.upstash.io/v2/schedules/https://api.github.com/repos/Flashsator/UnchartedW0rld/actions/workflows/daily.yml/dispatches" \
+  -H "Authorization: Bearer $QSTASH_TOKEN" \
+  -H "Upstash-Cron: 0 13 * * 1,3,5" \
+  -H "Upstash-Method: POST" \
+  -H "Upstash-Forward-Authorization: Bearer $GH_PAT" \
+  -H "Upstash-Forward-Accept: application/vnd.github+json" \
+  -H "Content-Type: application/json" \
+  -d '{"ref":"main"}'
+```
+
+## ⚠️ QStash schedule 會洩漏轉發的 token — 絕對不要 `GET /v2/schedules`
+
+**背景**：GitHub PAT 是放在 `Upstash-Forward-Authorization: Bearer <token>` header 裡
+建立排程的。QStash 會把這個 header **原封不動、明文儲存在每一個 schedule 裡**。
+
+**地雷**：任何「列出/讀取排程」的呼叫都會把存的 token **明文吐回來**：
+- `GET https://qstash.upstash.io/v2/schedules`（列全部 → 吐出**每一個**排程的 token）
+- `GET https://qstash.upstash.io/v2/schedules/{id}`（單一,也含完整 header）
+
+只要這輸出落到任何會被保存的地方（聊天記錄、CI log、終端截圖、貼給別人），
+那些 PAT 就等於外洩，必須當作已洩漏處理。**這在 2026-06-08 真的發生過**：用一個
+列出全部排程的步驟「驗證」，把 `.env` 的 `GITHUB_TOKEN` 連同另一個專案共用的 PAT
+一起印了出來，兩顆都得輪換。
+
+**規則**：
+1. **永遠不要**為了「檢查排程」而跑 `GET /v2/schedules`。
+2. 建立排程後，只看 `POST` 回傳的 `scheduleId` 來確認成功就夠了。
+3. 真要讀排程做驗證，**一定要過濾掉 header 欄位**，只取非敏感欄位：
+   ```bash
+   curl -s "https://qstash.upstash.io/v2/schedules/<ID>" \
+     -H "Authorization: Bearer $QSTASH_TOKEN" \
+   | jq '{scheduleId, cron, destination, method, body, isPaused, nextScheduleTime}'
+   ```
+   （`jq` 只挑安全欄位，`.header` 永遠不輸出，token 不會進到畫面/log。）
+
+**萬一已經吐出來了**：把那顆 PAT 當作已洩漏 →
+(a) 先生新 PAT；(b) **刪掉舊排程、用新 token 重建**（QStash 不能改已存的 header，
+只能 delete + recreate）；(c) 排程全部重建好後，**再去 GitHub 撤銷舊 PAT**
+（生新的不會讓舊的失效）。
+
+**通則**：把任何 QStash 排程的讀取輸出當成機密。轉發 token 用最小權限的
+fine-grained PAT（例如只給目標 repo 的 `Actions: write`），洩漏時影響面才最小。
