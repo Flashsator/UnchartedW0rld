@@ -57,6 +57,13 @@ Fri long → Sat + Sun shorts (two)
 other days → nothing
 ```
 
+> **Updated 2026-06-09 (commit `e7e7fb0`):** the mapping above is the cadence *as
+> of this 06-06/06-07 incident*. `planShortsForToday()` has since added a
+> **same-day teaser Short** (section 0, staggered to ~21:00 UTC) on each long
+> day and moved the off-day Shorts to later sections — so Mon/Wed now produce 2
+> Shorts and Fri produces 3, and every weekday gets one. See `src/shortsGen.ts`
+> and the Schedule section of `CLAUDE.md` for the current plan.
+
 So the Short seen on 06-07 (`aVToU-9aNos`) was **scheduled by the 06-06 run for the next
 day**, **not** published by the 06-07 run — the 06-07 run's log explicitly says
 "Shorts: nothing scheduled for today." Not a bug.

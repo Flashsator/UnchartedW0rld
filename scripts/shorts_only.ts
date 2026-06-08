@@ -4,7 +4,8 @@
 // Usage:
 //   tsx scripts/shorts_only.ts [runDirName]
 // If runDirName is omitted, the most recently modified directory under work/ is used.
-// SHORTS_PLAN_WEEKDAY controls how many shorts (3 => 2 shorts; 1/6 => 1 short).
+// SHORTS_PLAN_WEEKDAY controls how many shorts (1 or 3 => 2 shorts: same-day
+// teaser + next-day; 5 => 3 shorts; other weekdays => none).
 import fs from 'node:fs';
 import path from 'node:path';
 import { OUT_DIR, WORK_DIR } from '../src/config.js';
