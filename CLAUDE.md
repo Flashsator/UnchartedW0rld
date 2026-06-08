@@ -72,8 +72,9 @@ enrichments (each wrapped in try/catch so a failure never blocks a successful
 upload): `addToSeriesPlaylist` (shelves the video on its series-name playlist,
 creating it public if absent), `uploadCaption` (uploads the burned-in SRT as a
 real selectable caption track via `captions.insert` — **needs the
-`youtube.force-ssl` OAuth scope**, otherwise it logs the 403 and skips), and
-localized title/description metadata (`translateMetadata` in `scriptGen.ts`
+`youtube.force-ssl` OAuth scope**; the live `YT_REFRESH_TOKEN` was re-minted with
+it on 2026-06-08, so this works — if it ever 403s again, the token lost the scope),
+and localized title/description metadata (`translateMetadata` in `scriptGen.ts`
 reuses the script-gen Claude CLI to translate the title + prose blurb into
 es/pt/hi/id; passed as `videos.insert` `localizations`). The channel stays
 **English-primary** (`defaultLanguage: 'en'`, base snippet + audio + burned-in
@@ -83,6 +84,16 @@ on-screen text unchanged) — localization is discovery metadata only.
 
 - **Script-generation model:** `src/scriptGen.ts` `CLAUDE_MODEL` (currently
   `claude-opus-4-8`). This is the live one; it's passed to `claude -p --model`.
+- **Analytics feedback loop:** `ENABLE_ANALYTICS_FEEDBACK` (set to `'1'` in
+  `daily.yml`, default OFF locally). When on, `fetchTopPerformingTitles` ranks past
+  videos by CTR/retention/views and feeds `winningTitles[0]` into the Outro "Watch
+  next" end card + title-generation hints. Best-effort/non-fatal: needs the
+  `yt-analytics.readonly` scope on `YT_REFRESH_TOKEN` (granted 2026-06-08) AND real
+  analytics data over `ANALYTICS_LOOKBACK_DAYS` (90). Until the young channel
+  accrues data the ranking is empty, so the Outro falls back to the plain subscribe
+  CTA — that's expected, not a bug. The token carries four scopes:
+  `youtube.upload`, `youtube`, `youtube.force-ssl`, `yt-analytics.readonly`
+  (`scripts/bootstrap_youtube_token.ts` requests all four; re-mint there to change).
 - **Schedule:** `PUBLISH_WEEKDAYS_UTC = [1,3,5]`; `WEEKDAY_SERIES_MAP` = Mon→animals,
   Wed→insects, Fri→plants. Shorts: Mon/Wed → 1 short, Fri → 2.
 - **Day numbering** uses `new Date().getUTCDay()` (0=Sun … 6=Sat).
