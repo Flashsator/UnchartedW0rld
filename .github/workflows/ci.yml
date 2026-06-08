@@ -1,0 +1,39 @@
+name: CI
+
+# Fast safety gate: typecheck + unit tests on every code push/PR to main. The
+# live channel runs whatever is on `main` (daily.yml has no test step), so this
+# catches a broken push BEFORE the 13:00 UTC daily run ships a bad video. No
+# render, no secrets — just tsc + node:test, ~1-2 min. Doc-only changes skip it.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+# A newer push supersedes an in-flight check for the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm run tsc
+      - name: Unit tests
+        run: npm test

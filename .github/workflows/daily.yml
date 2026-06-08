@@ -187,3 +187,33 @@ jobs:
             work/
             out/
           retention-days: 3
+
+      # Alert the moment a daily run fails so a silent miss never goes unnoticed
+      # (autonomous channel = nobody is watching the Actions tab). Sends from/to
+      # the same Gmail, so the address isn't exposed in this public repo. Requires
+      # secrets MAIL_USERNAME (gmail) + MAIL_PASSWORD (a Gmail *app password*, not
+      # the account password). continue-on-error so a mail misconfig never
+      # obscures the real failure; if the secrets are unset the send simply no-ops.
+      - name: Email on failure
+        if: failure()
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          from: Wild Anomalies CI <${{ secrets.MAIL_USERNAME }}>
+          to: ${{ secrets.MAIL_USERNAME }}
+          subject: "❌ Wild Anomalies daily run failed (#${{ github.run_number }})"
+          body: |
+            The daily video pipeline failed.
+
+            Run:    ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            Commit: ${{ github.sha }}
+            Ref:    ${{ github.ref_name }}
+
+            Failure artifacts (work/ + out/) are attached to the run for 3 days.
+            No video was published for this slot — re-run manually if needed:
+            gh workflow run "Daily video" --ref main
