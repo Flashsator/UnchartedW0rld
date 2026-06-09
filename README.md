@@ -18,7 +18,19 @@ same-day teaser Short is staggered to **21:00 UTC** (`PUBLISH_HOUR_UTC + 2`).
 | 週三 (Wed) | 昆蟲 Insects | Tiny Titans (`insects`) | 13:00 | 19:00 |
 | 週五 (Fri) | 植物 Plants | Rooted Anomalies (`plants`) | 13:00 | 19:00 |
 
-Each long-video run also produces **Shorts**, all derived from that day's episode. It publishes a **same-day teaser** (the cold-open hook section, staggered ~2h after the long video so it funnels viewers into the fresh upload) **plus** later-section Shorts dripped onto the off-days, so **every day of the week gets a Short** and no two reuse the same section: 週一→週一+週二, 週三→週三+週四, 週五→週五+週六+週日 (週六/週日 both come from Friday's plants episode).
+Each long-video run also produces **Shorts**, all derived from that day's episode. It publishes a **same-day teaser** (the cold-open hook, section 0, staggered to 21:00 UTC so it funnels viewers into the fresh long video) **plus** later-section Shorts dripped onto the off-days. The off-day Shorts go out at the normal 19:00 UTC slot. Net result: **every day of the week gets exactly one Short**, and no two Shorts from the same episode reuse a section:
+
+| Short 發片日 | 來源 episode | 段落 section | 發片 UTC |
+|---|---|---|---|
+| 週一 (Mon) | 週一 動物 Animals | 0 (teaser) | 21:00 |
+| 週二 (Tue) | 週一 動物 Animals | 3 | 19:00 |
+| 週三 (Wed) | 週三 昆蟲 Insects | 0 (teaser) | 21:00 |
+| 週四 (Thu) | 週三 昆蟲 Insects | 3 | 19:00 |
+| 週五 (Fri) | 週五 植物 Plants | 0 (teaser) | 21:00 |
+| 週六 (Sat) | 週五 植物 Plants | 3 | 19:00 |
+| 週日 (Sun) | 週五 植物 Plants | 5 | 19:00 |
+
+So Mon/Wed each yield 2 Shorts (teaser + next off-day) and Fri yields 3 (teaser + Sat + Sun) — **7 Shorts/week** from the 3 long episodes.
 
 The schedule is fired by an **Upstash QStash schedule** (cron `0 13 * * 1,3,5` UTC), which POSTs a `workflow_dispatch` to `daily.yml` via the GitHub REST API. This is the **sole** trigger — the old Cloudflare Worker and GitHub native `schedule:` cron were both retired (see `docs/scheduling-troubleshooting.md`). Manual fallback: `gh workflow run "Daily video" --ref main`.
 
