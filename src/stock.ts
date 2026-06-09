@@ -285,20 +285,45 @@ async function makeKenBurnsClip(
 // filename (Date.now() alone can repeat within a millisecond on fast disks).
 let brollSeq = 0;
 
-// Fetches up to `count` distinct clips for a single stock query: video providers
-// first (Pexels/Pixabay/Coverr), then Unsplash Ken Burns stills to fill any gap.
-// Records contributing sources for attribution and dedupes against usedUrls so a
-// clip never repeats across beats or sections. Returns however many it found
-// (possibly fewer than count, possibly zero for an obscure query).
-async function fetchClipsForQuery(
+// Floor on how far a beat query may be broadened. The subject noun leads every
+// anchored beat query (see anchorVisual in scriptGen), so keeping at least this
+// many leading words always retains the subject — a missed specific shot
+// degrades to a broader shot of the SAME subject, never to generic/unrelated
+// footage.
+const MIN_QUERY_WORDS = 2;
+
+// Progressive relaxations of a beat query, most specific first: the full query,
+// then the same query with its trailing modifier word dropped, and so on, never
+// shorter than MIN_QUERY_WORDS. Pure and exported for testing. e.g.
+// relaxedQueryVariants('giant cave spider hunting in the dark') ->
+//   ['giant cave spider hunting in the dark', '...in the', '...in', '...hunting', 'giant cave spider', 'giant cave'].
+// Because the subject leads the query, every variant still shows the subject, so
+// when an exact narration shot can't be found the footage stays on-topic rather
+// than drifting to something unrelated.
+export function relaxedQueryVariants(query: string): string[] {
+  const words = query.split(/\s+/).filter(Boolean);
+  if (words.length <= MIN_QUERY_WORDS) {
+    const joined = words.join(' ');
+    return joined ? [joined] : [];
+  }
+  const variants: string[] = [];
+  for (let end = words.length; end >= MIN_QUERY_WORDS; end--) {
+    variants.push(words.slice(0, end).join(' '));
+  }
+  return variants;
+}
+
+// Downloads up to `remaining` distinct video clips for ONE concrete query string
+// (no relaxation here) from the three video providers, deduping against usedUrls.
+async function downloadVideoClips(
   query: string,
-  count: number,
+  remaining: number,
   cacheDir: string,
   usedUrls: Set<string>,
-  sourcesUsed?: Set<string>,
-): Promise<BrollClip[]> {
-  if (count <= 0) return [];
-
+  sourcesUsed: Set<string> | undefined,
+  clips: BrollClip[],
+): Promise<void> {
+  if (remaining <= 0) return;
   const [pexels, pixabay, coverr] = await Promise.all([
     searchPexels(query),
     searchPixabay(query),
@@ -312,10 +337,9 @@ async function fetchClipsForQuery(
     ...coverr.map((url) => ({ url, source: 'Coverr' })),
   ];
   const pool = shuffle(tagged).filter((c) => !usedUrls.has(c.url));
-
-  const clips: BrollClip[] = [];
+  let added = 0;
   for (const { url, source } of pool) {
-    if (clips.length >= count) break;
+    if (added >= remaining) break;
     try {
       const name = safeFilename(`${query}_${brollSeq++}_${Date.now()}.mp4`);
       const dest = path.join(cacheDir, name);
@@ -328,23 +352,63 @@ async function fetchClipsForQuery(
       usedUrls.add(url);
       sourcesUsed?.add(source);
       clips.push({ path: dest, duration: dur, width: 1920, height: 1080 });
+      added++;
     } catch (e) {
       log(`Broll download failed: ${(e as Error).message}`);
     }
   }
+}
+
+// Fetches up to `count` distinct clips for a single stock query: video providers
+// first (Pexels/Pixabay/Coverr), then Unsplash Ken Burns stills to fill any gap.
+// Both passes try the most specific query first and only broaden it toward the
+// subject (relaxedQueryVariants) as far as needed to fill the section, so the
+// footage tracks the narration as closely as the stock libraries allow. Records
+// contributing sources for attribution and dedupes against usedUrls so a clip
+// never repeats across beats or sections. Returns however many it found
+// (possibly fewer than count, possibly zero for an obscure subject).
+async function fetchClipsForQuery(
+  query: string,
+  count: number,
+  cacheDir: string,
+  usedUrls: Set<string>,
+  sourcesUsed?: Set<string>,
+): Promise<BrollClip[]> {
+  if (count <= 0) return [];
+
+  const variants = relaxedQueryVariants(query);
+  const clips: BrollClip[] = [];
+
+  // Video providers, most specific variant first. Stop broadening the moment the
+  // section's quota is met so common subjects never widen past the exact shot.
+  for (const variant of variants) {
+    if (clips.length >= count) break;
+    await downloadVideoClips(
+      variant,
+      count - clips.length,
+      cacheDir,
+      usedUrls,
+      sourcesUsed,
+      clips,
+    );
+  }
 
   // Still short after exhausting the video providers? Fill the remaining slots
-  // with Unsplash Ken Burns stills so the section never replays the same clip.
+  // with Unsplash Ken Burns stills, again most specific first, so the section
+  // never replays a clip and the still still shows the subject.
   if (clips.length < count && UNSPLASH_ACCESS_KEY) {
-    const photos = shuffle(await searchUnsplash(query)).filter((u) => !usedUrls.has(u));
-    for (const photoUrl of photos) {
+    for (const variant of variants) {
       if (clips.length >= count) break;
-      const clip = await makeKenBurnsClip(photoUrl, query, cacheDir, brollSeq++);
-      if (!clip) continue;
-      usedUrls.add(photoUrl);
-      sourcesUsed?.add('Unsplash');
-      clips.push(clip);
-      log(`B-roll gap filled with Unsplash Ken Burns still for "${query}"`);
+      const photos = shuffle(await searchUnsplash(variant)).filter((u) => !usedUrls.has(u));
+      for (const photoUrl of photos) {
+        if (clips.length >= count) break;
+        const clip = await makeKenBurnsClip(photoUrl, variant, cacheDir, brollSeq++);
+        if (!clip) continue;
+        usedUrls.add(photoUrl);
+        sourcesUsed?.add('Unsplash');
+        clips.push(clip);
+        log(`B-roll gap filled with Unsplash Ken Burns still for "${variant}"`);
+      }
     }
   }
 

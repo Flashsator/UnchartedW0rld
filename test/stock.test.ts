@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { allocateClipsAcrossBeats, preferredMoods, moodFromPath } from '../src/stock.js';
+import {
+  allocateClipsAcrossBeats,
+  preferredMoods,
+  moodFromPath,
+  relaxedQueryVariants,
+} from '../src/stock.js';
 
 test('distributes evenly when it divides', () => {
   assert.deepEqual(allocateClipsAcrossBeats(6, 3), [2, 2, 2]);
@@ -62,4 +67,36 @@ test('moodFromPath reads the mood folder from an assets-relative path', () => {
 
 test('moodFromPath returns null outside a recognized mood folder', () => {
   assert.equal(moodFromPath('yt_music/Uncategorized/Track - Artist.mp3'), null);
+});
+
+test('relaxedQueryVariants broadens most-specific-first by trimming trailing words', () => {
+  assert.deepEqual(relaxedQueryVariants('giant cave spider hunting prey'), [
+    'giant cave spider hunting prey',
+    'giant cave spider hunting',
+    'giant cave spider',
+    'giant cave',
+  ]);
+});
+
+test('relaxedQueryVariants keeps the leading subject (never broadens below the floor)', () => {
+  // The subject noun leads every anchored beat query, so the last variant still
+  // names the subject rather than collapsing to a single generic word.
+  const out = relaxedQueryVariants('anglerfish bioluminescent lure glowing deep sea');
+  assert.equal(out[0], 'anglerfish bioluminescent lure glowing deep sea');
+  assert.equal(out[out.length - 1], 'anglerfish bioluminescent');
+  assert.ok(out.every((v) => v.startsWith('anglerfish')));
+});
+
+test('relaxedQueryVariants leaves short queries untouched', () => {
+  assert.deepEqual(relaxedQueryVariants('cave spider'), ['cave spider']);
+  assert.deepEqual(relaxedQueryVariants('spider'), ['spider']);
+});
+
+test('relaxedQueryVariants normalizes whitespace and handles empties', () => {
+  assert.deepEqual(relaxedQueryVariants('  deep   sea   anglerfish '), [
+    'deep sea anglerfish',
+    'deep sea',
+  ]);
+  assert.deepEqual(relaxedQueryVariants('   '), []);
+  assert.deepEqual(relaxedQueryVariants(''), []);
 });
