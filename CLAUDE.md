@@ -105,7 +105,10 @@ on-screen text unchanged) — localization is discovery metadata only.
   `youtube.upload`, `youtube`, `youtube.force-ssl`, `yt-analytics.readonly`
   (`scripts/bootstrap_youtube_token.ts` requests all four; re-mint there to change).
 - **Schedule:** `PUBLISH_WEEKDAYS_UTC = [1,3,5]`; `WEEKDAY_SERIES_MAP` = Mon→animals,
-  Wed→insects, Fri→plants. Shorts (`planShortsForToday` in `src/shortsGen.ts`):
+  Wed→insects, Fri→plants. The run is *triggered* at 13:00 UTC but each long video
+  is *scheduled public* at `PUBLISH_HOUR_UTC` = **19:00 UTC** (the US-afternoon
+  slot ≈3pm ET / 12pm PT; = 03:00 next-day Taiwan). Don't confuse the 13:00 UTC
+  trigger with the publish time. Shorts (`planShortsForToday` in `src/shortsGen.ts`):
   every long-video run emits a **same-day teaser** (section 0 = cold-open hook,
   staggered to `PUBLISH_HOUR_UTC + 2` ≈ 21:00 UTC so it funnels into the
   just-dropped long video) **plus** later-section shorts dripped onto the
