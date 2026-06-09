@@ -114,6 +114,15 @@ on-screen text unchanged) — localization is discovery metadata only.
   just-dropped long video) **plus** later-section shorts dripped onto the
   off-days, so every weekday gets one and no two reuse a section: Mon/Wed → 2
   shorts (same-day + next-day), Fri → 3 (same-day + Sat + Sun).
+- **Shorts → long-video funnel:** the only *automated* link from a Short to its
+  long video is the `▶ Full video:` URL line in the Short's description
+  (`shortsDescription` in `src/youtube.ts`). YouTube's native **Related-video
+  card** (the in-player long-video link on a Short) is **Studio-only — the Data
+  API exposes no field for it**, so it's intentionally NOT automated; binding it
+  is a manual Studio action the human can do if/when they want (must wait until
+  the long video is actually public). Likewise the **"altered/synthetic content"
+  disclosure** toggle is Studio-only and left to human judgment — don't try to
+  set either via the API.
 - **Trigger:** an **Upstash QStash** schedule (cron `0 13 * * 1,3,5` UTC) POSTs a
   `workflow_dispatch` to `daily.yml` — the **sole** trigger. The old Cloudflare
   Worker (`cloudflare-trigger/`) and GitHub `schedule:` cron are retired/removed; the
