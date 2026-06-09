@@ -11,24 +11,28 @@ at **13:00 UTC** (QStash cron), but each video is *scheduled to go public* at
 **19:00 UTC** (`PUBLISH_HOUR_UTC`) — the US-afternoon slot (≈3pm ET / 12pm PT in
 summer), fixed in UTC by design so no daylight-saving handling is needed. The
 same-day teaser Short is staggered to **21:00 UTC** (`PUBLISH_HOUR_UTC + 2`).
+Taiwan time is UTC+8 (no DST), so the 19:00/21:00 UTC publish lands in the early
+hours of the **next** Taiwan day (03:00 / 05:00).
 
-| 發片日 | 主題 | Series | 觸發 (trigger) UTC | 發片 (publish) UTC |
+| 發片日 | 主題 | Series | 觸發 UTC / 台灣 | 發片 UTC / 台灣 |
 |---|---|---|---|---|
-| 週一 (Mon) | 動物 Animals | Beast Codex (`animals`) | 13:00 | 19:00 |
-| 週三 (Wed) | 昆蟲 Insects | Tiny Titans (`insects`) | 13:00 | 19:00 |
-| 週五 (Fri) | 植物 Plants | Rooted Anomalies (`plants`) | 13:00 | 19:00 |
+| 週一 (Mon) | 動物 Animals | Beast Codex (`animals`) | 13:00 / 21:00 | 19:00 / 03:00 (隔天) |
+| 週三 (Wed) | 昆蟲 Insects | Tiny Titans (`insects`) | 13:00 / 21:00 | 19:00 / 03:00 (隔天) |
+| 週五 (Fri) | 植物 Plants | Rooted Anomalies (`plants`) | 13:00 / 21:00 | 19:00 / 03:00 (隔天) |
 
 Each long-video run also produces **Shorts**, all derived from that day's episode. It publishes a **same-day teaser** (the cold-open hook, section 0, staggered to 21:00 UTC so it funnels viewers into the fresh long video) **plus** later-section Shorts dripped onto the off-days. The off-day Shorts go out at the normal 19:00 UTC slot. Net result: **every day of the week gets exactly one Short**, and no two Shorts from the same episode reuse a section:
 
-| Short 發片日 | 來源 episode | 段落 section | 發片 UTC |
-|---|---|---|---|
-| 週一 (Mon) | 週一 動物 Animals | 0 (teaser) | 21:00 |
-| 週二 (Tue) | 週一 動物 Animals | 3 | 19:00 |
-| 週三 (Wed) | 週三 昆蟲 Insects | 0 (teaser) | 21:00 |
-| 週四 (Thu) | 週三 昆蟲 Insects | 3 | 19:00 |
-| 週五 (Fri) | 週五 植物 Plants | 0 (teaser) | 21:00 |
-| 週六 (Sat) | 週五 植物 Plants | 3 | 19:00 |
-| 週日 (Sun) | 週五 植物 Plants | 5 | 19:00 |
+Short 發片日 below is the **UTC** day; in Taiwan (UTC+8) each lands in the early hours of the next morning.
+
+| Short 發片日 (UTC) | 來源 episode | 段落 section | 發片 UTC | 台灣時間 |
+|---|---|---|---|---|
+| 週一 (Mon) | 週一 動物 Animals | 0 (teaser) | 21:00 | 05:00 (週二) |
+| 週二 (Tue) | 週一 動物 Animals | 3 | 19:00 | 03:00 (週三) |
+| 週三 (Wed) | 週三 昆蟲 Insects | 0 (teaser) | 21:00 | 05:00 (週四) |
+| 週四 (Thu) | 週三 昆蟲 Insects | 3 | 19:00 | 03:00 (週五) |
+| 週五 (Fri) | 週五 植物 Plants | 0 (teaser) | 21:00 | 05:00 (週六) |
+| 週六 (Sat) | 週五 植物 Plants | 3 | 19:00 | 03:00 (週日) |
+| 週日 (Sun) | 週五 植物 Plants | 5 | 19:00 | 03:00 (週一) |
 
 So Mon/Wed each yield 2 Shorts (teaser + next off-day) and Fri yields 3 (teaser + Sat + Sun) — **7 Shorts/week** from the 3 long episodes.
 
