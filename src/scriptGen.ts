@@ -125,7 +125,7 @@ Shape:
   "tags": ["10-15 single-word or 2-word tags. Include 3-4 BROAD high-search-volume terms a curious non-expert would actually type (e.g. 'weird animals', 'nature documentary', 'insect defense', 'did you know') alongside the precise scientific names — not only academic jargon"],
   "subject": "string, 1-3 words — the ONE concrete, photographable thing this whole episode is about (a creature, object, place, or person), e.g. 'cave spider', 'glass frog', 'Roman aqueduct'. This is the visual anchor for EVERY b-roll query below. Must be a real, searchable noun, not an abstract idea.",
   "thumbnailConcept": "string, 8-20 words — a SINGLE concrete, photographable real-world scene for the thumbnail background that instantly reads as this topic to a stranger AND is visually dramatic through CONTRAST: a bright, vividly-lit, sharply-focused subject that pops off the frame, saturated color, a tense moment or unexpected pose, crisp directional or rim light that sculpts the subject. The subject must stay BRIGHT and clearly visible — 'dramatic' must NOT mean a dark, dim, or muddy image; never bury the subject in shadow (it renders unreadable on a phone feed). The subject must occupy a LARGE central portion of the frame (fill roughly half its width) so it stays instantly recognizable at small phone-feed thumbnail size — a tiny subject lost in a wide scene reads as nothing. Describe ONE clear subject + setting + lighting. NO abstract textures, NO extreme macro close-ups, NO collages, NO flat evenly-lit specimen shots, NO overall-dark scenes. Good: 'a single termite filling the frame, its back glowing vivid electric blue under crisp directional light, sharp against a clean contrasting background'. Bad: 'a termite on pale wood with a small blue patch, flat lighting', 'a dim dark moody scene', 'micro-detail biology', 'abstract neural patterns'.",
-  "thumbnailWord": "string, ONE punchy uppercase word (3-8 letters) for the thumbnail caption — the single idea a viewer should feel. e.g., 'LISTEN', 'BURIED', 'WRONG'. Must NOT be a structural word like CASE/FILE/PROFILE.",
+  "thumbnailWord": "string, ONE punchy uppercase word (3-8 letters) for the thumbnail caption — the single idea a viewer should feel. e.g., 'LISTEN', 'BURIED', 'WRONG'. Must NOT be a structural word like CASE/FILE/PROFILE, and must NOT repeat a word already in the title — it complements the title, it does not echo it.",
   "sections": [
     {
       "heading": "string, 3-6 words, what this beat is about",
@@ -174,8 +174,12 @@ Title style:
 - 50-70 chars. No clickbait lies — the payoff must be real and delivered in the script.
 - Never invent specific institutions, document numbers, or named whistleblowers. Plausible and generic only.
 - No exclamation marks. No emoji. No ALL CAPS except a single word for emphasis at most.
+- ONE CONCRETE ODDITY: the title must contain a single hard, specific detail the viewer can picture — a number, a body part, a named action, a place — not only an abstract stake. "The Frog That Freezes Solid Every Winter and Wakes Up" (concrete: freezes solid) beats "The Frog With an Unbelievable Survival Secret" (abstract).
 
-Narrator note:
+Packaging synergy (title + thumbnail are read together as ONE unit — design the gap on purpose):
+- The title, "thumbnailWord", and "thumbnailConcept" are the three things a stranger sees at once in the feed. They must COMPLEMENT, never restate each other: the title frames the question or the stakes, the thumbnail image shows the visual jolt, and the thumbnailWord lands the single emotion. Together they should open a curiosity gap the viewer can only close by clicking.
+- Do NOT let all three say the same thing. If the title already names the surprise, the thumbnailWord should name the FEELING or the unanswered "why/how" (e.g. title reveals an exploding termite -> thumbnailWord "WHY", not "EXPLODES"). If the title withholds, the thumbnail may show more.
+- The thumbnailWord must add information or tension the title does not already carry — never a synonym of a title word.
 - The narrator is ${voice.gender === 'female' ? 'a woman' : 'a man'} with ${voice.accent === 'gb' ? 'a British' : 'an American'} accent (${voice.label}). Avoid script lines that assume the opposite gender. Otherwise stay neutral first-person plural ("we") or second person ("you").
 
 Opening rule (CRITICAL — TWO-PART OPEN, THIS RUN'S HOOK STYLE: "${hook.name}"):
