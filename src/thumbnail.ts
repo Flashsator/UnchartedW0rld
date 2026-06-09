@@ -301,6 +301,11 @@ function buildSvgOverlay(
   kickerOverride?: string,
 ): { svg: Buffer; meta: string } {
   const v = pickVariant();
+  // The thumbnail caption is intentionally ONE word — a single high-impact kicker
+  // that forms a curiosity-gap pair with the title (it must NOT echo the title;
+  // see thumbnailWord in scriptGen). Every layout's font fitting (fitFontSize /
+  // letterSpacingFor) is tuned for one short poster word; do not change this to a
+  // phrase without reworking the layouts and mobile-size legibility.
   // Decide the caption word once: explicit override (episode word / manual) wins,
   // else the randomized title word.
   const word = kickerOverride?.trim() ? kickerOverride.trim().toUpperCase() : pickKicker(title);

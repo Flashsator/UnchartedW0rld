@@ -94,6 +94,12 @@ on-screen text unchanged) — localization is discovery metadata only.
 
 - **Script-generation model:** `src/scriptGen.ts` `CLAUDE_MODEL` (currently
   `claude-opus-4-8`). This is the live one; it's passed to `claude -p --model`.
+- **Thumbnail caption is one word (by design):** `src/thumbnail.ts` renders a
+  single high-impact kicker word (`thumbnailWord`, else a word picked from the
+  title) — NOT a phrase. It forms a curiosity-gap pair with the title and must
+  not echo it. Every layout's font fitting is tuned for one short poster word;
+  this is intentional, not a bug — don't "fix" it into a multi-word caption
+  without reworking the layouts and mobile legibility.
 - **Analytics feedback loop:** `ENABLE_ANALYTICS_FEEDBACK` (set to `'1'` in
   `daily.yml`, default OFF locally). When on, `fetchTopPerformingTitles` ranks past
   videos by CTR/retention/views and feeds `winningTitles[0]` into the Outro "Watch
