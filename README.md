@@ -6,13 +6,17 @@ Fully autonomous pipeline that produces and uploads cinematic mini-documentaries
 
 ## Publish schedule
 
-Three videos per week on a **fixed weekday → topic** mapping, anchored to **Taiwan time (UTC+8, no DST)**.
+Three videos per week on a **fixed weekday → topic** mapping. The run is *triggered*
+at **13:00 UTC** (QStash cron), but each video is *scheduled to go public* at
+**19:00 UTC** (`PUBLISH_HOUR_UTC`) — the US-afternoon slot (≈3pm ET / 12pm PT in
+summer), fixed in UTC by design so no daylight-saving handling is needed. The
+same-day teaser Short is staggered to **21:00 UTC** (`PUBLISH_HOUR_UTC + 2`).
 
-| 發片日 | 主題 | Series | 台灣時間 | UTC |
+| 發片日 | 主題 | Series | 觸發 (trigger) UTC | 發片 (publish) UTC |
 |---|---|---|---|---|
-| 週一 (Mon) | 動物 Animals | Beast Codex (`animals`) | 21:00 | 13:00 |
-| 週三 (Wed) | 昆蟲 Insects | Tiny Titans (`insects`) | 21:00 | 13:00 |
-| 週五 (Fri) | 植物 Plants | Rooted Anomalies (`plants`) | 21:00 | 13:00 |
+| 週一 (Mon) | 動物 Animals | Beast Codex (`animals`) | 13:00 | 19:00 |
+| 週三 (Wed) | 昆蟲 Insects | Tiny Titans (`insects`) | 13:00 | 19:00 |
+| 週五 (Fri) | 植物 Plants | Rooted Anomalies (`plants`) | 13:00 | 19:00 |
 
 Each long-video run also produces **Shorts**, all derived from that day's episode. It publishes a **same-day teaser** (the cold-open hook section, staggered ~2h after the long video so it funnels viewers into the fresh upload) **plus** later-section Shorts dripped onto the off-days, so **every day of the week gets a Short** and no two reuse the same section: 週一→週一+週二, 週三→週三+週四, 週五→週五+週六+週日 (週六/週日 both come from Friday's plants episode).
 
