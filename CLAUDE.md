@@ -37,6 +37,15 @@ $env:DRY_RUN=1; npm run run     # runs script→TTS→b-roll→render→mux→th
 After adding a `test/*.test.ts` file, add it to the `test` script in `package.json`
 — the Node 20 test runner does NOT glob.
 
+A fast CI gate (`.github/workflows/ci.yml`) runs `npm run tsc` + `npm test` on
+every code push/PR to `main` (doc-only changes are skipped via `paths-ignore`).
+It's the safety net that catches a broken push *before* the 13:00 UTC daily run
+ships it — so keep `tsc` clean and tests green, or the gate (and the next video)
+goes red. No custom failure-email step lives in `daily.yml`: GitHub's built-in
+Actions failure notification to the triggering account already covers a failed
+run; neither catches a *total* QStash non-trigger (that needs a separate
+heartbeat monitor).
+
 ## Invariants — do not break these
 
 1. **No fabricated data (science channel).** An on-screen overlay (`stat`/`label`/
