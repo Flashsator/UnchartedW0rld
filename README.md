@@ -63,6 +63,7 @@ Claude Code CLI (Opus)      script JSON
 Azure Speech (neural)       per-section MP3 + word boundaries
   ↓
 Pexels + Pixabay            b-roll MP4 per section
+  (gap-fill: Wikimedia Commons CC still → Unsplash, only if providers fall short)
 Local library (yt_music)    BGM + ambient breather audio (royalty-free, offline)
   ↓
 Remotion (headless Chrome)  silent MP4 (intro / sections / breather / outro)
@@ -86,8 +87,11 @@ YouTube Data API            scheduled publish (private + publishAt)
 | Pixabay | Video b-roll | https://pixabay.com/api/docs/ |
 | Cloudflare Workers AI | FLUX.2 thumbnails | https://dash.cloudflare.com → Workers AI |
 | Unsplash | Still-photo b-roll fallback (optional) | https://unsplash.com/developers |
+| Wikimedia Commons | Last-resort b-roll gap-fill (keyless, no signup) | https://commons.wikimedia.org/w/api.php |
 
 BGM and ambient audio come solely from official **YouTube Audio Library** tracks committed under `assets/yt_music/` (the one music source YouTube does not Content-ID-claim, so videos keep monetization). Tracks listed in `assets/music_blacklist.txt` are never reused. BGM volume is set via `BGM_VOLUME` in `src/config.ts`.
+
+**B-roll gap-fill (Wikimedia Commons).** Episode subjects are pinned to common, widely-filmed creatures so the stock providers reliably return on-topic footage. As a last-resort safety net, if Pexels/Pixabay/Coverr **and** Unsplash all come up short for a shot (typically an unusually obscure subject), the pipeline pulls a still from **Wikimedia Commons**, which title-matches the actual species and returns a real photo instead of letting the providers fuzzy-match into generic unrelated scenery. It accepts **permissive licenses only** (CC0 / public domain / plain CC BY — never share-alike, non-commercial, or no-derivatives), and every Commons photo used is credited per-image (author + license) in the video description. For common subjects the providers already fill the quota, so this never fires.
 
 ### 2. YouTube OAuth
 
@@ -142,4 +146,4 @@ scripts/         bootstrap_youtube_token.ts
 
 ## License
 
-Personal project. Third-party media retains its original license (Pexels and Pixabay video terms apply). Music is from the YouTube Audio Library bundled in `assets/yt_music/`; "Attribution required" tracks must be credited in the video description.
+Personal project. Third-party media retains its original license (Pexels and Pixabay video terms apply). Any Wikimedia Commons stills used as gap-fill are permissive-licensed (CC0 / public domain / plain CC BY) and credited per-image (author + license) in the video description. Music is from the YouTube Audio Library bundled in `assets/yt_music/`; "Attribution required" tracks must be credited in the video description.
