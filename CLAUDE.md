@@ -60,6 +60,14 @@ heartbeat monitor).
 3. **On-topic visuals.** Every b-roll query is anchored to the episode `subject`
    (`anchorVisual` in `scriptGen.ts`); per-section ordered shot beats (`visuals[]`)
    make footage track the narration. Keep both intact when touching the b-roll path.
+   The script prompt also **pins `subject` to a common, widely-filmed creature**
+   that free stock libraries actually have (the STOCK-FOOTAGE RULE in the subject
+   field + the "obscurity in the angle, not the animal" sub-topic rule). This is
+   load-bearing for all three series: an obscure species (e.g. a `chough`) returns
+   no stock video, and the providers fuzzy-match a no-result query into generic
+   unrelated scenery (random landscapes), so the footage stops matching the
+   narration. Keep the surprise in the *angle* (familiar animal, buried behavior —
+   "how a cat laps water"), never in an unfilmable subject.
 4. **Length is mandatory.** Scripts target ~`TARGET_MINUTES` (9.5–10 min) so the
    final cut clears 8:00 for YouTube mid-roll ads. There's a word-count floor in
    the script prompt; don't lower it.
