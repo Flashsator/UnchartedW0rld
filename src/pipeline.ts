@@ -34,7 +34,14 @@ import { fetchTopPerformingTitles } from './analytics.js';
 import { extractIconEvents } from './iconExtractor.js';
 import { computeCutTimes } from './cuts.js';
 import { buildShortsManifest, planShortsForToday, publishAtFor } from './shortsGen.js';
-import type { Episode, Interlude, MusicCredit, RenderManifest, RuntimeProfile } from './types.js';
+import type {
+  Episode,
+  ImageCredit,
+  Interlude,
+  MusicCredit,
+  RenderManifest,
+  RuntimeProfile,
+} from './types.js';
 import { ensureDir, log, safeFilename } from './utils.js';
 
 function relAsset(runDir: string, abs: string): string {
@@ -120,6 +127,10 @@ async function main(): Promise<void> {
   // Records which stock libraries actually contributed footage, so the
   // description credits only the sources truly used (not just the ones enabled).
   const footageUsed = new Set<string>();
+  // Per-image CC credits for any Wikimedia Commons stills the b-roll gap-fill
+  // pulled in (only happens when the video providers came up short — i.e. an
+  // obscure subject). Threaded into the description's attribution block.
+  const imageCredits: ImageCredit[] = [];
   const broll: string[][] = [];
   for (let i = 0; i < sectionAudios.length; i++) {
     const sec = sectionAudios[i]!;
@@ -129,7 +140,14 @@ async function main(): Promise<void> {
     const beats = episode.sections[i]?.visuals?.length
       ? episode.sections[i]!.visuals!
       : [sec.visual];
-    const clips = await fetchBrollForBeats(beats, sec.duration, runDir, used, footageUsed);
+    const clips = await fetchBrollForBeats(
+      beats,
+      sec.duration,
+      runDir,
+      used,
+      footageUsed,
+      imageCredits,
+    );
     broll.push(clips.map((c) => relAsset(runDir, c.path)));
   }
 
@@ -168,7 +186,14 @@ async function main(): Promise<void> {
       continue;
     }
     musicCredits.push(ambient.credit);
-    const visuals = await fetchBroll(interludeVisualQuery, INTERLUDE_SEC, runDir, used, footageUsed);
+    const visuals = await fetchBroll(
+      interludeVisualQuery,
+      INTERLUDE_SEC,
+      runDir,
+      used,
+      footageUsed,
+      imageCredits,
+    );
     interludes.push({
       afterSectionIndex: interludePositions[k]!,
       durationSec: INTERLUDE_SEC,
@@ -268,7 +293,7 @@ async function main(): Promise<void> {
   const footageSources = ['Pexels', 'Pixabay', 'Coverr', 'Unsplash'].filter((s) =>
     footageUsed.has(s),
   );
-  const attribution = buildAttribution(musicCredits, footageSources);
+  const attribution = buildAttribution(musicCredits, footageSources, imageCredits);
   const fullDescription = [episode.description, chapters, CHANNEL_FOOTER, attribution]
     .filter(Boolean)
     .join('\n\n');

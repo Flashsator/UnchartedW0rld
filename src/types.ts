@@ -56,6 +56,17 @@ export type MusicCredit = {
   artist: string;
 };
 
+// Per-image attribution for a Wikimedia Commons still used as b-roll gap-fill.
+// CC licenses require crediting the specific author + license per image (unlike
+// the royalty-free video libraries, which only need a source name), so each used
+// Commons photo carries its own credit line into the description.
+export type ImageCredit = {
+  title: string;
+  author: string;
+  license: string;
+  url: string;
+};
+
 export type SectionAudio = {
   index: number;
   narration: string;

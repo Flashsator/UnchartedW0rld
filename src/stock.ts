@@ -13,7 +13,7 @@ import {
   VIDEO_W,
   WORK_DIR,
 } from './config.js';
-import type { BrollClip, MusicCredit } from './types.js';
+import type { BrollClip, ImageCredit, MusicCredit } from './types.js';
 import {
   downloadFile,
   ensureDir,
@@ -229,6 +229,119 @@ export async function searchUnsplash(query: string): Promise<string[]> {
   }
 }
 
+type CommonsImageInfo = {
+  url?: string;
+  descriptionurl?: string;
+  mime?: string;
+  width?: number;
+  height?: number;
+  extmetadata?: Record<string, { value?: string } | undefined>;
+};
+
+type CommonsPage = { title?: string; imageinfo?: CommonsImageInfo[] };
+
+type CommonsResp = { query?: { pages?: Record<string, CommonsPage> } };
+
+// Wikimedia asks API clients to identify themselves with a descriptive,
+// contactable User-Agent; an anonymous default risks being throttled or blocked.
+const COMMONS_UA =
+  'WildAnomaliesBot/1.0 (autonomous science channel; contact via YouTube @WildAnomalies)';
+
+// Strips HTML tags and the few common entities out of a Commons extmetadata
+// value (the "Artist" field is usually an <a>/<span> blob) down to a clean
+// single-line credit. Pure and exported for testing.
+export function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// CC BY-SA's share-alike clause could force the whole video to be licensed
+// CC BY-SA, which is a problem for a monetized channel, so the gap-fill accepts
+// only permissive licenses: CC0, public domain, and plain CC BY (never -SA, -NC,
+// or -ND, and not copyleft like GFDL/FAL). An image whose license can't be
+// confirmed permissive is dropped — we'd rather fall through to Unsplash than
+// embed an unclear or share-alike license. Pure and exported for testing.
+export function isPermissiveLicense(license: string): boolean {
+  const l = license.toLowerCase();
+  if (!l) return false;
+  if (l.includes('cc0') || l.includes('public domain') || l.includes('pdm') || l === 'pd') {
+    return true;
+  }
+  // Plain CC BY only — any share-alike / non-commercial / no-derivatives is out.
+  return l.includes('cc by') && !l.includes('sa') && !l.includes('nc') && !l.includes('nd');
+}
+
+// Parses a Commons generator=search + imageinfo response into usable landscape
+// photo URLs, each paired with its CC attribution. Pure and exported for
+// testing. Keeps only JPEG/PNG raster photos at least `minHeight` tall and at
+// least as wide as tall (so the Ken Burns crop fills 16:9 without gutting the
+// image — portraits and tiny thumbnails are dropped) AND carrying a permissive
+// license (isPermissiveLicense).
+export function parseCommonsResults(
+  resp: CommonsResp,
+  minHeight: number,
+): Array<{ url: string; credit: ImageCredit }> {
+  const pages = resp.query?.pages;
+  if (!pages) return [];
+  const out: Array<{ url: string; credit: ImageCredit }> = [];
+  for (const page of Object.values(pages)) {
+    const info = page.imageinfo?.[0];
+    if (!info?.url) continue;
+    const mime = info.mime ?? '';
+    if (mime !== 'image/jpeg' && mime !== 'image/png') continue;
+    const w = info.width ?? 0;
+    const h = info.height ?? 0;
+    if (h < minHeight || w < h) continue;
+    const meta = info.extmetadata ?? {};
+    const license = stripHtml(meta.LicenseShortName?.value ?? '');
+    if (!isPermissiveLicense(license)) continue;
+    const author = stripHtml(meta.Artist?.value ?? '').slice(0, 80) || 'Unknown author';
+    const title = (page.title ?? '')
+      .replace(/^File:/i, '')
+      .replace(/\.[a-z0-9]+$/i, '')
+      .trim();
+    out.push({
+      url: info.url,
+      credit: {
+        title: title || 'Wikimedia Commons image',
+        author,
+        license,
+        url: info.descriptionurl ?? '',
+      },
+    });
+  }
+  return out;
+}
+
+// Wikimedia Commons is keyless and title-matches the actual species name, so it
+// is the b-roll gap-fill of last resort that still returns a REAL photo of an
+// obscure subject — where the video providers (and Unsplash) only fuzzy-match a
+// no-result query into generic unrelated scenery. Each photo carries its own
+// CC author/license credit for the description's attribution block.
+async function searchCommons(query: string): Promise<Array<{ url: string; credit: ImageCredit }>> {
+  const url =
+    `https://commons.wikimedia.org/w/api.php?action=query&format=json` +
+    `&generator=search&gsrsearch=${encodeURIComponent(query)}` +
+    `&gsrnamespace=6&gsrlimit=15&prop=imageinfo&iiprop=url%7Cmime%7Csize%7Cextmetadata`;
+  try {
+    const data = await fetchJson<CommonsResp>(url, {
+      headers: { 'User-Agent': COMMONS_UA },
+    });
+    return parseCommonsResults(data, BROLL_MIN_HEIGHT);
+  } catch (e) {
+    log(`Commons search failed: ${(e as Error).message}`);
+    return [];
+  }
+}
+
 // Turns a still photo into a BROLL_CLIP_SEC Ken Burns clip (slow centered
 // zoom-in) at the project resolution/fps, so it flows through the same
 // OffthreadVideo path as real footage. The large pre-upscale keeps the zoom
@@ -373,6 +486,7 @@ async function fetchClipsForQuery(
   cacheDir: string,
   usedUrls: Set<string>,
   sourcesUsed?: Set<string>,
+  commonsCredits?: ImageCredit[],
 ): Promise<BrollClip[]> {
   if (count <= 0) return [];
 
@@ -393,9 +507,33 @@ async function fetchClipsForQuery(
     );
   }
 
-  // Still short after exhausting the video providers? Fill the remaining slots
-  // with Unsplash Ken Burns stills, again most specific first, so the section
-  // never replays a clip and the still still shows the subject.
+  // Still short after the video providers? Fill the remaining slots with Ken
+  // Burns stills. Wikimedia Commons goes FIRST because it title-matches the
+  // actual species: for an OBSCURE subject — where the video providers and
+  // Unsplash both just fuzzy-match a no-result query into generic unrelated
+  // scenery — Commons returns a real photo of the thing being narrated. This is
+  // the safety net that keeps the footage on-subject instead of drifting to
+  // random landscapes. For common subjects the video providers already met the
+  // quota, so this never runs. Each used photo records its CC credit.
+  if (clips.length < count) {
+    for (const variant of variants) {
+      if (clips.length >= count) break;
+      const found = shuffle(await searchCommons(variant)).filter((c) => !usedUrls.has(c.url));
+      for (const { url, credit } of found) {
+        if (clips.length >= count) break;
+        const clip = await makeKenBurnsClip(url, variant, cacheDir, brollSeq++);
+        if (!clip) continue;
+        usedUrls.add(url);
+        commonsCredits?.push(credit);
+        clips.push(clip);
+        log(`B-roll gap filled with Wikimedia Commons still for "${variant}" (${credit.license})`);
+      }
+    }
+  }
+
+  // Unsplash is the final aesthetic filler when Commons also came up short, again
+  // most specific first, so the section never replays a clip and still shows the
+  // subject.
   if (clips.length < count && UNSPLASH_ACCESS_KEY) {
     for (const variant of variants) {
       if (clips.length >= count) break;
@@ -431,10 +569,18 @@ export async function fetchBroll(
   workDir: string,
   usedUrls: Set<string>,
   sourcesUsed?: Set<string>,
+  commonsCredits?: ImageCredit[],
 ): Promise<BrollClip[]> {
   const cacheDir = ensureDir(path.join(workDir, 'broll'));
   const needed = Math.max(1, Math.ceil(sectionDuration / BROLL_CLIP_SEC));
-  const clips = await fetchClipsForQuery(query, needed, cacheDir, usedUrls, sourcesUsed);
+  const clips = await fetchClipsForQuery(
+    query,
+    needed,
+    cacheDir,
+    usedUrls,
+    sourcesUsed,
+    commonsCredits,
+  );
   if (clips.length === 0) {
     throw new Error(
       `No b-roll for query "${query}" — check Pexels/Pixabay/Coverr/Unsplash API keys`,
@@ -455,6 +601,7 @@ export async function fetchBrollForBeats(
   workDir: string,
   usedUrls: Set<string>,
   sourcesUsed?: Set<string>,
+  commonsCredits?: ImageCredit[],
 ): Promise<BrollClip[]> {
   const cacheDir = ensureDir(path.join(workDir, 'broll'));
   const queries = beats.map((b) => b.trim()).filter(Boolean);
@@ -473,6 +620,7 @@ export async function fetchBrollForBeats(
       cacheDir,
       usedUrls,
       sourcesUsed,
+      commonsCredits,
     );
     clips.push(...got);
   }
@@ -486,6 +634,7 @@ export async function fetchBrollForBeats(
       cacheDir,
       usedUrls,
       sourcesUsed,
+      commonsCredits,
     );
     clips.push(...got);
   }

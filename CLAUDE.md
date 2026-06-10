@@ -68,6 +68,19 @@ heartbeat monitor).
    unrelated scenery (random landscapes), so the footage stops matching the
    narration. Keep the surprise in the *angle* (familiar animal, buried behavior —
    "how a cat laps water"), never in an unfilmable subject.
+   As a **last-resort safety net** (not a strategy — obscure subjects still hurt
+   views), if the video providers AND Unsplash come up short for a beat, the
+   b-roll gap-fill falls back to a **Wikimedia Commons** still that title-matches
+   the actual species (`searchCommons`/`parseCommonsResults` in `src/stock.ts`),
+   so the footage stays on-subject instead of drifting to random scenery. Two
+   guards are load-bearing here and must not be relaxed: it accepts **permissive
+   licenses only** (CC0 / public domain / plain CC BY — never -SA/-NC/-ND or
+   GFDL, since share-alike could force-license the whole monetized video;
+   `isPermissiveLicense`), and every used photo carries a **per-image CC credit**
+   (author + license) into the description's attribution block
+   (`buildAttribution` in `src/attribution.ts`, fed by the `imageCredits`
+   collector in `pipeline.ts`). For common subjects the providers already fill
+   the quota, so this never fires.
 4. **Length is mandatory.** Scripts target ~`TARGET_MINUTES` (9.5–10 min) so the
    final cut clears 8:00 for YouTube mid-roll ads. There's a word-count floor in
    the script prompt; don't lower it.
