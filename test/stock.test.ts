@@ -5,6 +5,7 @@ import {
   filterAndRankByRelevance,
   interleaveRoundRobin,
   isPermissiveLicense,
+  orderPoolByPreference,
   pexelsSlugText,
   pickBestVideoFile,
   pixabayCategoryForSeries,
@@ -275,8 +276,14 @@ test('pickBestVideoFile falls back to the largest landscape file above 720 when 
   assert.equal(file?.height, 960);
 });
 
-test('pickBestVideoFile returns null when nothing fits (too small or wrong container)', () => {
-  assert.equal(pickBestVideoFile([mp4(640, 360)]), null);
+test('pickBestVideoFile keeps a landscape clip even below 720 (largest rendition)', () => {
+  // Resolution never excludes a relevant landscape clip; the pool ordering
+  // demotes it instead (orderPoolByPreference).
+  const file = pickBestVideoFile([mp4(640, 360), mp4(854, 480)]);
+  assert.equal(file?.height, 480);
+});
+
+test('pickBestVideoFile returns null when nothing fits (wrong container or orientation)', () => {
   assert.equal(
     pickBestVideoFile([{ link: 'h', width: 1920, height: 1080, file_type: 'video/hls' }]),
     null,
@@ -290,6 +297,28 @@ test('pickBestVideoFile portrait mode wants tall files, 1920 first then 1280 fal
   const fallback = pickBestVideoFile([mp4(720, 1280), mp4(1920, 1080)], 'portrait');
   assert.equal(fallback?.link, 'f_720x1280');
   assert.equal(pickBestVideoFile([mp4(1920, 1080)], 'portrait'), null);
+});
+
+test('pickBestVideoFile portrait keeps the 1280 hard floor (cropped landscape is sharper)', () => {
+  assert.equal(pickBestVideoFile([mp4(540, 960)], 'portrait'), null);
+});
+
+// --- orderPoolByPreference -------------------------------------------------------
+
+test('orderPoolByPreference demotes short and low-res clips without dropping them', () => {
+  const c = (url: string, extra: { duration?: number; height?: number } = {}) => ({
+    url,
+    source: 'Pexels',
+    ...extra,
+  });
+  const pool = orderPoolByPreference([
+    c('short', { duration: 3 }),
+    c('good-hd', { duration: 12, height: 1080 }),
+    c('low-res', { duration: 12, height: 480 }),
+    c('unknown'),
+  ]);
+  // Relevance order survives within each tier; weak clips go last, never away.
+  assert.deepEqual(pool.map((x) => x.url), ['good-hd', 'unknown', 'short', 'low-res']);
 });
 
 // --- interleaveRoundRobin --------------------------------------------------------

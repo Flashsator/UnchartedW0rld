@@ -155,6 +155,10 @@ export type StockCandidate = {
   meta?: string;
   // Provider-reported clip length in seconds, when exposed.
   duration?: number;
+  // Height in px of the rendition we'd download, when the provider reports it.
+  // Used only to DEMOTE weak-resolution clips to the back of the pool —
+  // relevance decides what's in the pool, resolution never excludes a clip.
+  height?: number;
 };
 
 // The Shorts frame is 9:16 at 1080 wide, so a portrait clip needs ~1920px of
@@ -178,8 +182,13 @@ export type StockVideoFile = {
 // won and every Pexels download was 720p in a 1080p render). Among renditions
 // meeting the quality floor the SMALLEST is taken: the render output caps the
 // useful resolution, a 4K master only costs download time and CI disk. Below
-// the floor, the largest available is the least-bad fallback. Pure and
-// exported for testing.
+// the floor, the largest available is the least-bad fallback. A LANDSCAPE clip
+// is never rejected on resolution alone — a soft, on-subject clip beats a sharp
+// off-subject one, so the lowest tier returns the largest rendition and the
+// pool ordering demotes it instead (see orderPoolByPreference). Portrait keeps
+// its 1280 hard floor: below that, center-cropping a relevant 1080p landscape
+// clip (the guaranteed fallback path) is sharper than the portrait file itself.
+// Pure and exported for testing.
 export function pickBestVideoFile(
   files: StockVideoFile[],
   orientation: BrollOrientation = 'landscape',
@@ -199,6 +208,9 @@ export function pickBestVideoFile(
   const fallback = oriented.filter((f) => f.height >= fallbackFloor);
   if (fallback.length > 0) {
     return fallback.reduce((best, f) => (f.height > best.height ? f : best));
+  }
+  if (orientation === 'landscape' && oriented.length > 0) {
+    return oriented.reduce((best, f) => (f.height > best.height ? f : best));
   }
   return null;
 }
@@ -307,6 +319,7 @@ async function searchPexels(
         source: 'Pexels',
         meta: pexelsSlugText(v.url),
         duration: v.duration,
+        height: file.height,
       });
     }
     return out;
@@ -341,7 +354,13 @@ async function searchPixabay(
       } else if (f.height > f.width) {
         continue;
       }
-      out.push({ url: f.url, source: 'Pixabay', meta: v.tags, duration: v.duration });
+      out.push({
+        url: f.url,
+        source: 'Pixabay',
+        meta: v.tags,
+        duration: v.duration,
+        height: f.height,
+      });
     }
     return out;
   } catch (e) {
@@ -369,11 +388,18 @@ async function searchCoverr(
     for (const v of data.hits) {
       const link = v.urls?.mp4 ?? v.urls?.mp4_download;
       if (!link) continue;
-      // Skip portrait clips and anything below our minimum height when Coverr
-      // reports dimensions; accept when it doesn't (most Coverr clips are 1080p+).
-      if (v.max_height && v.max_height < BROLL_MIN_HEIGHT) continue;
+      // Skip portrait clips when Coverr reports dimensions (the catalog is
+      // essentially all landscape anyway). Low resolution does NOT exclude a
+      // clip — the pool ordering demotes it instead, so a relevant soft clip
+      // still beats an off-subject sharp one.
       if (v.max_width && v.max_height && v.max_height > v.max_width) continue;
-      out.push({ url: link, source: 'Coverr', meta: v.title, duration: v.duration });
+      out.push({
+        url: link,
+        source: 'Coverr',
+        meta: v.title,
+        duration: v.duration,
+        height: v.max_height,
+      });
     }
     return out;
   } catch (e) {
@@ -613,6 +639,18 @@ export function relaxedQueryVariants(query: string): string[] {
   return variants;
 }
 
+// Reorders a relevance-ranked candidate pool so technically weak clips (too
+// short to fill a cut slot, or below the 720p landscape floor) sit at the BACK
+// rather than being excluded: subject relevance decides membership, technical
+// quality only decides order. Relative order within each tier is preserved, so
+// the relevance ranking survives the reshuffle. Pure and exported for testing.
+export function orderPoolByPreference(candidates: StockCandidate[]): StockCandidate[] {
+  const isWeak = (c: StockCandidate) =>
+    (c.duration !== undefined && c.duration < BROLL_CLIP_SEC) ||
+    (c.height !== undefined && c.height < LANDSCAPE_FALLBACK_MIN_HEIGHT);
+  return [...candidates.filter((c) => !isWeak(c)), ...candidates.filter(isWeak)];
+}
+
 // Downloads up to `remaining` distinct video clips for ONE concrete query string
 // (no relaxation here) from the three video providers, deduping against usedUrls.
 async function downloadVideoClips(
@@ -640,13 +678,7 @@ async function downloadVideoClips(
     [pexels, pixabay, coverr].map((g) => filterAndRankByRelevance(g, query)),
   );
   const merged = interleaveRoundRobin(groups).filter((c) => !usedUrls.has(c.url));
-  const fullLength = merged.filter(
-    (c) => c.duration === undefined || c.duration >= BROLL_CLIP_SEC,
-  );
-  const tooShort = merged.filter(
-    (c) => c.duration !== undefined && c.duration < BROLL_CLIP_SEC,
-  );
-  const pool = [...fullLength, ...tooShort];
+  const pool = orderPoolByPreference(merged);
   let added = 0;
   for (const { url, source } of pool) {
     if (added >= remaining) break;
