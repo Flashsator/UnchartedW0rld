@@ -11,7 +11,7 @@
     "sample": "remotion render remotion/index.ts MainVideo out/sample.mp4 --frames=0-1800",
     "studio": "remotion studio remotion/index.ts",
     "tsc": "tsc --noEmit",
-    "test": "node --import tsx --test test/analytics.test.ts test/attribution.test.ts test/chunker.test.ts test/ctrRescue.test.ts test/cuts.test.ts test/engage.test.ts test/scriptGen.test.ts test/shortsGen.test.ts test/stock.test.ts test/topicResearch.test.ts"
+    "test": "node --import tsx --test test/analytics.test.ts test/attribution.test.ts test/chunker.test.ts test/ctrRescue.test.ts test/cuts.test.ts test/engage.test.ts test/retention.test.ts test/scriptGen.test.ts test/shortsGen.test.ts test/stock.test.ts test/thumbLayoutStats.test.ts test/topicResearch.test.ts"
   },
   "dependencies": {
     "@remotion/bundler": "^4.0.468",

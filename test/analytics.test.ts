@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { rankPerformers, type VideoPerformance } from '../src/analytics.ts';
+import { buildWatchNextBlock, rankPerformers, type VideoPerformance } from '../src/analytics.ts';
 
 function perf(partial: Partial<VideoPerformance> & { title: string }): VideoPerformance {
   return { videoId: partial.title, views: 0, avgViewPct: 0, ...partial };
@@ -80,4 +80,42 @@ test('drops rows with blank titles', () => {
   const ranked = rankPerformers(rows, 8);
 
   assert.deepEqual(ranked, ['real title']);
+});
+
+// --- buildWatchNextBlock --------------------------------------------------------------
+
+test('builds a Watch next block of long-form links only (Shorts excluded)', () => {
+  const performers: VideoPerformance[] = [
+    perf({ title: 'Long winner', durationSec: 600 }),
+    perf({ title: 'A Short', durationSec: 45 }),
+    perf({ title: 'Second long', durationSec: 580 }),
+  ];
+
+  const block = buildWatchNextBlock(performers);
+
+  assert.match(block, /^▶ Watch next:/);
+  assert.match(block, /Long winner\n {2}https:\/\/youtu\.be\/Long winner/);
+  assert.match(block, /Second long/);
+  assert.doesNotMatch(block, /A Short/);
+});
+
+test('caps the link count and preserves performance order', () => {
+  const performers: VideoPerformance[] = ['a', 'b', 'c', 'd'].map((t) =>
+    perf({ title: t, durationSec: 600 }),
+  );
+
+  const block = buildWatchNextBlock(performers, 2);
+  const lines = block.split('\n');
+
+  // Header + 2 × (title line + url line).
+  assert.equal(lines.length, 5);
+  assert.match(lines[1]!, /• a/);
+  assert.match(lines[3]!, /• b/);
+});
+
+test('returns an empty string when nothing qualifies (drops out of the description join)', () => {
+  assert.equal(buildWatchNextBlock([]), '');
+  assert.equal(buildWatchNextBlock([perf({ title: 'short only', durationSec: 50 })]), '');
+  // Unknown duration is treated as a Short, not linked.
+  assert.equal(buildWatchNextBlock([perf({ title: 'no duration' })]), '');
 });

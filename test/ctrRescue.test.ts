@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {
   isRescueCandidate,
   median,
+  nextRescueLever,
   parseIsoDuration,
+  parseRescueState,
   pickRescueTarget,
   seriesForPublishedAt,
   type RescueRow,
@@ -123,4 +125,22 @@ test('falls back to the first active series on a non-publish weekday', () => {
   // 2026-06-07 = Sunday — no mapping; must still return a real series.
   const s = seriesForPublishedAt('2026-06-07T19:00:00Z');
   assert.ok(s.key.length > 0);
+});
+
+// --- parseRescueState / nextRescueLever ------------------------------------------------
+
+test('parses videoId<TAB>lever lines, reading bare ids as thumbnail rescues (old format)', () => {
+  const records = parseRescueState('v1\tthumbnail\nv2\ttitle\nlegacy-id\n\n');
+  assert.deepEqual(records, [
+    { videoId: 'v1', lever: 'thumbnail' },
+    { videoId: 'v2', lever: 'title' },
+    { videoId: 'legacy-id', lever: 'thumbnail' },
+  ]);
+});
+
+test('lever alternates strictly, starting with thumbnail', () => {
+  assert.equal(nextRescueLever(null), 'thumbnail');
+  assert.equal(nextRescueLever(undefined), 'thumbnail');
+  assert.equal(nextRescueLever('thumbnail'), 'title');
+  assert.equal(nextRescueLever('title'), 'thumbnail');
 });

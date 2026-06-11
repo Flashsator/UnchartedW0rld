@@ -7,6 +7,15 @@ export function log(...args: unknown[]): void {
   console.log(`[${ts}]`, ...args);
 }
 
+// Parses an ISO 8601 duration ("PT9M58S") to seconds. Returns 0 when unparsable
+// so an unknown duration classifies as a Short and is safely skipped by the
+// long-form-only consumers (analytics, retention, CTR rescue).
+export function parseIsoDuration(iso: string | null | undefined): number {
+  const m = iso?.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+  if (!m) return 0;
+  return Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
+}
+
 export function ensureDir(p: string): string {
   fs.mkdirSync(p, { recursive: true });
   return p;

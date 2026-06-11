@@ -17,7 +17,6 @@ import {
   WORK_DIR,
   pickStructure,
   pickSubTheme,
-  pickThumbLayout,
   pickTone,
   pickVoice,
   seriesForToday,
@@ -30,10 +29,12 @@ import { renderVideo, renderShorts } from './render.js';
 import { buildChapters, muxAudio, muxShortsAudio, writeSrt } from './mux.js';
 import { buildAttribution, shortsMusicLine } from './attribution.js';
 import { addToSeriesPlaylist, listUploadedTitles, uploadCaption, uploadVideo } from './youtube.js';
-import { fetchTopPerformingTitles } from './analytics.js';
+import { buildWatchNextBlock, fetchChannelPerformance, type VideoPerformance } from './analytics.js';
+import { fetchRetentionDirective } from './retention.js';
+import { pickThumbLayoutWeighted, recordThumbLayout } from './thumbLayoutStats.js';
 import { validateTopicDemand } from './topicResearch.js';
 import { autoCommentOnRecentVideos } from './engage.js';
-import { rescueWorstThumbnail } from './ctrRescue.js';
+import { rescueWorstPackaging } from './ctrRescue.js';
 import { extractIconEvents } from './iconExtractor.js';
 import { computeCutTimes } from './cuts.js';
 import { buildShortsManifest, planShortsForToday, publishAtFor } from './shortsGen.js';
@@ -68,12 +69,11 @@ async function main(): Promise<void> {
   const voice = pickVoice();
   const tone = pickTone();
   const structure = pickStructure();
-  const thumbLayout = pickThumbLayout();
   const subTheme = pickSubTheme(series);
 
   log(`=== Wild Anomalies — ${series.name} (${series.key}) ===`);
   log(
-    `Profile: voice=${voice.label} (fixed) | tone=${tone.label} (rate ${tone.rate}, pitch ${tone.pitch}) | structure=${structure.label} (${structure.key}) | thumb=${thumbLayout} | sub-theme="${subTheme}" | target=${TARGET_MINUTES}min`,
+    `Profile: voice=${voice.label} (fixed) | tone=${tone.label} (rate ${tone.rate}, pitch ${tone.pitch}) | structure=${structure.label} (${structure.key}) | sub-theme="${subTheme}" | target=${TARGET_MINUTES}min`,
   );
 
   const today = new Date().toISOString().slice(0, 10);
@@ -99,20 +99,34 @@ async function main(): Promise<void> {
   if (priorTitles.length > 0) {
     log(`Topic dedup: avoiding ${priorTitles.length} already-published titles.`);
   }
-  // Opt-in feedback loop: steer the new title toward the shapes that earned the
-  // most clicks + watch-time on this channel. Best-effort — no-ops to [] when
-  // disabled or when the token lacks the analytics scope.
-  let winningTitles: string[] = [];
+  // Opt-in feedback loop: the channel's best-performing past videos (ranked by
+  // CTR/retention/views). Feeds the title steer, the topic-candidate hint, the
+  // description's "Watch next" links, and the CTR-weighted thumbnail-layout
+  // pick. Best-effort — no-ops to [] when disabled or when the token lacks the
+  // analytics scope.
+  let topPerformers: VideoPerformance[] = [];
+  let allPerformances: VideoPerformance[] = [];
   if (ENABLE_ANALYTICS_FEEDBACK) {
-    winningTitles = await fetchTopPerformingTitles();
-    if (winningTitles.length > 0) {
-      log(`Analytics feedback: steering title toward ${winningTitles.length} proven winners.`);
+    ({ top: topPerformers, all: allPerformances } = await fetchChannelPerformance());
+    if (topPerformers.length > 0) {
+      log(`Analytics feedback: steering title toward ${topPerformers.length} proven winners.`);
     }
   }
+  const winningTitles = topPerformers.map((p) => p.title);
+  // Layout draw waits for the performance data: with enough measured uploads it
+  // weights layouts by their real CTR, otherwise it's the same no-repeat
+  // rotation as before. Fed the FULL measured set, not just the winners —
+  // a layout only attached to low-CTR videos must show up to be penalized.
+  const thumbLayout = pickThumbLayoutWeighted(allPerformances);
+  log(`Thumb layout: ${thumbLayout}`);
+  // Measured retention feedback: where this channel's viewers actually leave,
+  // turned into a pacing directive for the script prompt. Best-effort —
+  // undefined until the young channel accrues retention curves.
+  const retentionDirective = await fetchRetentionDirective();
   // Opt-in topic steer: score a handful of candidate angles against real
   // YouTube search demand and prefer the proven winner. Best-effort — undefined
   // (disabled or any failure) leaves the script model's own topic choice intact.
-  const topicDirective = await validateTopicDemand(series, subTheme, priorTitles);
+  const topicDirective = await validateTopicDemand(series, subTheme, priorTitles, winningTitles);
   const { episode, hookPattern } = await generateEpisode(
     series,
     structure,
@@ -121,6 +135,7 @@ async function main(): Promise<void> {
     priorTitles,
     winningTitles,
     topicDirective,
+    retentionDirective,
   );
   fs.writeFileSync(path.join(runDir, 'episode.json'), JSON.stringify(episode, null, 2));
 
@@ -302,7 +317,11 @@ async function main(): Promise<void> {
     footageUsed.has(s),
   );
   const attribution = buildAttribution(musicCredits, footageSources, imageCredits);
-  const fullDescription = [episode.description, chapters, CHANNEL_FOOTER, attribution]
+  // "Watch next" cross-links to the channel's strongest long-form videos —
+  // session watch-time is a heavy ranking signal and these links are free.
+  // Empty string (young channel / analytics off) just drops out of the join.
+  const watchNext = buildWatchNextBlock(topPerformers);
+  const fullDescription = [episode.description, chapters, watchNext, CHANNEL_FOOTER, attribution]
     .filter(Boolean)
     .join('\n\n');
   const episodeForUpload: Episode = { ...episode, description: fullDescription };
@@ -335,7 +354,7 @@ async function main(): Promise<void> {
       code,
       {
         title: t.title,
-        description: [t.description, chapters, CHANNEL_FOOTER, attribution]
+        description: [t.description, chapters, watchNext, CHANNEL_FOOTER, attribution]
           .filter(Boolean)
           .join('\n\n'),
       },
@@ -350,6 +369,9 @@ async function main(): Promise<void> {
   });
   // Long-form is live — record the lock so any later same-day run aborts above.
   writeUploadLock(today);
+  // Log which thumbnail layout this video shipped with, so once its CTR is
+  // measured the layout-learning picker can weight future draws by it.
+  recordThumbLayout(videoId, thumbLayout);
   log(`Done. https://youtu.be/${videoId} (scheduled ${publishAt.toISOString()})`);
 
   // Best-effort enrichments (each self-contained & non-fatal): shelve the video
@@ -363,10 +385,10 @@ async function main(): Promise<void> {
   // End-of-run housekeeping over PAST uploads (each opt-in via its env flag and
   // fully non-fatal): seed one engagement comment under each recently-public
   // video that lacks ours, and rescue at most one underperforming long-form
-  // thumbnail. Runs only on real (non-DRY_RUN) runs — the early DRY_RUN return
-  // above skips it.
+  // video's packaging (alternating thumbnail/title lever). Runs only on real
+  // (non-DRY_RUN) runs — the early DRY_RUN return above skips it.
   await autoCommentOnRecentVideos();
-  await rescueWorstThumbnail();
+  await rescueWorstPackaging();
 }
 
 async function runShortsPipeline(

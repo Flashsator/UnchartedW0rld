@@ -213,6 +213,7 @@ export async function generateEpisode(
   avoidTitles: string[] = [],
   winningTitles: string[] = [],
   topicDirective?: string,
+  retentionDirective?: string,
 ): Promise<{ episode: Episode; hookPattern: string }> {
   const hook = pickHookPattern(structure);
   // Feed recently-published titles to the model so it steers away from topics
@@ -242,12 +243,15 @@ export async function generateEpisode(
   const directiveBlock = topicDirective
     ? `\n\nTOPIC STEER (validated against real YouTube search demand — prefer this angle if it fits all rules above):\n${topicDirective}`
     : '';
+  // Measured pacing feedback (from retention.ts): where this channel's real
+  // viewers leave. Shapes pacing only — never the facts, never the safety rules.
+  const retentionBlock = retentionDirective ? `\n\n${retentionDirective}` : '';
   const userPrompt = `Series: ${series.name}
 Theme: ${series.theme}
 Sub-topic focus: ${subTheme}
 Structural template: ${structure.label} (${structure.key})
 
-Pick ONE specific surprising topic within this sub-topic focus that fits a ${TARGET_MINUTES}-minute mini-documentary. Use the "${hook.name}" hook style for the opening. Follow the ${structure.label} per-section role specification exactly. Write the full script JSON now.${avoidBlock}${winBlock}${directiveBlock}`;
+Pick ONE specific surprising topic within this sub-topic focus that fits a ${TARGET_MINUTES}-minute mini-documentary. Use the "${hook.name}" hook style for the opening. Follow the ${structure.label} per-section role specification exactly. Write the full script JSON now.${avoidBlock}${winBlock}${directiveBlock}${retentionBlock}`;
 
   const fullPrompt = `${buildSystemPrompt(hook, structure, voice, subTheme)}\n\n---\n\n${userPrompt}`;
 

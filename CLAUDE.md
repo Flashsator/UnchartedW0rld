@@ -116,14 +116,20 @@ uploads (env-gated, non-fatal, skipped on DRY_RUN via the early return):
 `autoCommentOnRecentVideos` (`src/engage.ts`, `ENABLE_AUTO_COMMENT`) posts one
 reply-bait engagement comment under each recently-public video that lacks ours —
 comments can't be posted on private/scheduled videos, so today's upload gets its
-comment on the NEXT run; and `rescueWorstThumbnail` (`src/ctrRescue.ts`,
+comment on the NEXT run; and `rescueWorstPackaging` (`src/ctrRescue.ts`,
 `ENABLE_CTR_RESCUE`) finds at most ONE long-form video (2–21 days old, ≥300
-impressions) whose CTR is below 70% of the channel median, regenerates its
-thumbnail (fresh layout, FLUX), and swaps it via `thumbnails.set`. One rescue
-per run (FLUX free tier), one rescue per video ever. Their state files
-(`work/.commented-videos`, `work/.ctr-rescued`) ride the `rotation-state-`
-cache in `daily.yml` — **any new state file must be added to that cache's
-`path:` list** or it silently resets every run.
+impressions) whose CTR is below 70% of the channel median and pulls ONE
+packaging lever, **alternating across runs**: thumbnail (regenerated with a
+CTR-weighted fresh layout, FLUX, swapped via `thumbnails.set`) or title
+(rewritten by the script CLI under a same-claim-only rule — invariant #1
+extends to packaging — swapped via `videos.update`; an unusable rewrite falls
+back to the thumbnail lever so the run's one rescue isn't wasted). The state
+file records `videoId<TAB>lever` so the log doubles as an A/B record of which
+lever moves CTR. One rescue per run (FLUX free tier), one rescue per video
+ever. Their state files (`work/.commented-videos`, `work/.ctr-rescued`,
+`work/.thumb-layout-log`) ride the `rotation-state-` cache in `daily.yml` —
+**any new state file must be added to that cache's `path:` list** or it
+silently resets every run.
 
 ## Config & env overrides
 
@@ -136,14 +142,28 @@ cache in `daily.yml` — **any new state file must be added to that cache's
   this is intentional, not a bug — don't "fix" it into a multi-word caption
   without reworking the layouts and mobile legibility.
 - **Analytics feedback loop:** `ENABLE_ANALYTICS_FEEDBACK` (set to `'1'` in
-  `daily.yml`, default OFF locally). When on, `fetchTopPerformingTitles` ranks past
-  videos by CTR/retention/views and feeds `winningTitles[0]` into the Outro "Watch
-  next" end card + title-generation hints. Best-effort/non-fatal: needs the
-  `yt-analytics.readonly` scope on `YT_REFRESH_TOKEN` (granted 2026-06-08) AND real
-  analytics data over `ANALYTICS_LOOKBACK_DAYS` (90). Until the young channel
-  accrues data the ranking is empty, so the Outro falls back to the plain subscribe
-  CTA — that's expected, not a bug. The token carries four scopes:
-  `youtube.upload`, `youtube`, `youtube.force-ssl`, `yt-analytics.readonly`
+  `daily.yml`, default OFF locally). When on, `fetchTopPerformers`
+  (`src/analytics.ts`) ranks past videos by CTR/retention/views and the result
+  drives FIVE consumers: `winningTitles[0]` into the Outro "Watch next" end
+  card, title-generation shape hints, a soft flavor hint to the topic-candidate
+  proposer, the description's "▶ Watch next:" cross-link block
+  (`buildWatchNextBlock` — long-form links only, Shorts excluded, also spliced
+  into localized descriptions), and the CTR-weighted thumbnail-layout draw
+  (`pickThumbLayoutWeighted` in `src/thumbLayoutStats.ts` — every upload logs
+  `videoId<TAB>layout` to `work/.thumb-layout-log`; once ≥`THUMB_LAYOUT_MIN_SAMPLES`
+  videos per layout have measured CTR, layout selection shifts from blind
+  no-repeat rotation to a CTR-weighted draw that still explores every layout).
+  The same flag gates the **retention feedback loop** (`src/retention.ts`):
+  `fetchRetentionDirective` samples recent long-form `audienceWatchRatio` curves,
+  measures early-exit % and the steepest mid-video drop, and hands
+  `generateEpisode` a measured pacing directive (shapes pacing only — never
+  facts). Best-effort/non-fatal: needs the `yt-analytics.readonly` scope on
+  `YT_REFRESH_TOKEN` (granted 2026-06-08) AND real analytics data over
+  `ANALYTICS_LOOKBACK_DAYS` (90). Until the young channel accrues data every
+  consumer quietly degrades to its pre-feedback behavior (plain subscribe CTA,
+  no hints, no watch-next block, blind rotation, no directive) — that's
+  expected, not a bug. The token carries four scopes: `youtube.upload`,
+  `youtube`, `youtube.force-ssl`, `yt-analytics.readonly`
   (`scripts/bootstrap_youtube_token.ts` requests all four; re-mint there to change).
 - **Topic demand validation:** `ENABLE_TOPIC_VALIDATION` (`'1'` in `daily.yml`).
   Before script-gen, `validateTopicDemand` (`src/topicResearch.ts`) asks the
@@ -152,7 +172,10 @@ cache in `daily.yml` — **any new state file must be added to that cache's
   count of its query's top YouTube search hits (search.list = 100 quota units
   each, ~500/run of the 10k daily budget), and feeds the winner to
   `generateEpisode` as a topic *steer*, not an order: the script model still
-  owns the episode and every safety rule. Any failure falls back silently to the
+  owns the episode and every safety rule. When analytics feedback is on, the
+  channel's own winning titles are passed as a soft flavor hint to the
+  candidate proposer (deliberately NOT a hard weighting — a young channel's
+  sample is taste, not statistics). Any failure falls back silently to the
   model's own topic choice.
 - **Shorts loop seamlessly (by design):** `OUTRO_SEC = 0` in `src/shortsGen.ts` —
   a Short ends exactly where its narration ends so it loops mid-curiosity

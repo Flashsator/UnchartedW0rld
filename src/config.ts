@@ -95,6 +95,17 @@ export const CTR_RESCUE_MIN_IMPRESSIONS = Number(process.env.CTR_RESCUE_MIN_IMPR
 // A video qualifies when its CTR < this fraction of the long-form median CTR.
 export const CTR_RESCUE_THRESHOLD = Number(process.env.CTR_RESCUE_THRESHOLD ?? 0.7);
 
+// --- Thumbnail layout learning (rides ENABLE_ANALYTICS_FEEDBACK) --------------
+// Which layout each uploaded long-form video shipped with (videoId<TAB>layout,
+// one per line; a later line for the same id wins, so a CTR-rescue swap simply
+// appends). Once enough videos carry measured CTR, layout selection weights
+// itself toward the layouts that historically earn clicks (see
+// thumbLayoutStats.ts). Persisted via the rotation-state cache.
+export const THUMB_LAYOUT_LOG_FILE = path.join(WORK_DIR, '.thumb-layout-log');
+// A layout needs at least this many CTR-measured videos before its own mean
+// counts; below that it inherits the cross-layout mean (keeps exploring).
+export const THUMB_LAYOUT_MIN_SAMPLES = Number(process.env.THUMB_LAYOUT_MIN_SAMPLES ?? 2);
+
 // --- Topic demand validation (opt-in) -----------------------------------------
 // When ENABLE_TOPIC_VALIDATION=1, before writing the script the pipeline asks
 // the script model for a handful of candidate angles, scores each against real
@@ -690,24 +701,33 @@ export function pickStructure(): Structure {
 
 // Picks a thumbnail layout at random but never repeats the one used on the
 // previous run, so consecutive episodes always look visually distinct. The
-// last choice is persisted in a tiny state file under WORK_DIR.
+// last choice is persisted in a tiny state file under WORK_DIR. The read/persist
+// pair is shared with the CTR-weighted picker (thumbLayoutStats.ts) so both
+// selection paths honor the same no-repeat state.
 const LAST_THUMB_LAYOUT_FILE = path.join(WORK_DIR, '.last-thumb-layout');
 
-export function pickThumbLayout(): ThumbLayout {
-  let last: string | null = null;
+export function readLastThumbLayout(): string | null {
   try {
-    last = fs.readFileSync(LAST_THUMB_LAYOUT_FILE, 'utf-8').trim();
+    return fs.readFileSync(LAST_THUMB_LAYOUT_FILE, 'utf-8').trim();
   } catch {
-    // No previous run recorded — fall through to the full pool.
+    return null;
   }
-  const pool = THUMB_LAYOUTS.filter((l) => l !== last);
-  const chosen = pickFromArray(pool.length > 0 ? pool : THUMB_LAYOUTS);
+}
+
+export function persistLastThumbLayout(layout: ThumbLayout): void {
   try {
     fs.mkdirSync(WORK_DIR, { recursive: true });
-    fs.writeFileSync(LAST_THUMB_LAYOUT_FILE, chosen, 'utf-8');
+    fs.writeFileSync(LAST_THUMB_LAYOUT_FILE, layout, 'utf-8');
   } catch {
     // Persistence is best-effort; a failure just means the next run may repeat.
   }
+}
+
+export function pickThumbLayout(): ThumbLayout {
+  const last = readLastThumbLayout();
+  const pool = THUMB_LAYOUTS.filter((l) => l !== last);
+  const chosen = pickFromArray(pool.length > 0 ? pool : THUMB_LAYOUTS);
+  persistLastThumbLayout(chosen);
   return chosen;
 }
 

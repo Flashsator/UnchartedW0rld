@@ -102,6 +102,7 @@ async function proposeCandidates(
   series: Series,
   subTheme: string,
   avoidTitles: string[],
+  winningTitles: string[],
 ): Promise<TopicCandidate[]> {
   // Without the avoid-list, the static popularity scoring re-elects the same
   // evergreen winner every week and the steer fights generateEpisode's own
@@ -110,6 +111,17 @@ async function proposeCandidates(
     avoidTitles.length > 0
       ? `\n- the channel has ALREADY covered these — do NOT propose the same or a near-identical angle:\n` +
         avoidTitles.map((t) => `  • ${t}`).join('\n')
+      : '';
+  // Own-channel performance hint (deliberately soft — the channel is young and
+  // a handful of videos is taste, not statistics, so this nudges the FLAVOR of
+  // candidates rather than hard-weighting any topic or series).
+  const winBlock =
+    winningTitles.length > 0
+      ? `\n- these past episodes performed BEST on this channel — bias candidates toward the same KIND of curiosity gap or stakes (different subjects, never a repeat):\n` +
+        winningTitles
+          .slice(0, 5)
+          .map((t) => `  • ${t}`)
+          .join('\n')
       : '';
   const prompt =
     `You plan episodes for "Wild Anomalies", a YouTube science mini-documentary channel. ` +
@@ -121,6 +133,7 @@ async function proposeCandidates(
     `- searchQuery is what a curious viewer would actually type into YouTube for this angle ` +
     `(e.g. "how do cats drink water"), 3-8 words, no hashtags.` +
     avoidBlock +
+    winBlock +
     `\n\nOutput ONLY a JSON array of ${TOPIC_CANDIDATE_COUNT} objects, each: ` +
     `{"subject": "...", "angle": "...", "searchQuery": "..."}`;
   const raw = await runClaudeCli(prompt);
@@ -159,10 +172,11 @@ export async function validateTopicDemand(
   series: Series,
   subTheme: string,
   avoidTitles: string[] = [],
+  winningTitles: string[] = [],
 ): Promise<string | undefined> {
   if (!ENABLE_TOPIC_VALIDATION) return undefined;
   try {
-    const candidates = await proposeCandidates(series, subTheme, avoidTitles);
+    const candidates = await proposeCandidates(series, subTheme, avoidTitles, winningTitles);
     if (candidates.length === 0) {
       log('Topic validation: no parsable candidates — falling back to the model\'s own choice.');
       return undefined;

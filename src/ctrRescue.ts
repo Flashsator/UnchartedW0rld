@@ -9,7 +9,6 @@ import {
   CTR_RESCUE_MIN_IMPRESSIONS,
   CTR_RESCUE_THRESHOLD,
   ENABLE_CTR_RESCUE,
-  THUMB_LAYOUTS,
   WEEKDAY_SERIES_MAP,
   WORK_DIR,
   YT_CLIENT_ID,
@@ -17,18 +16,24 @@ import {
   YT_REFRESH_TOKEN,
   type Series,
 } from './config.js';
+import { runClaudeCli } from './scriptGen.js';
 import { makeThumbnail } from './thumbnail.js';
-import { setThumbnail } from './youtube.js';
-import { log } from './utils.js';
+import { loadLayoutLog, pickThumbLayoutWeighted, recordThumbLayout } from './thumbLayoutStats.js';
+import { setThumbnail, updateVideoTitle } from './youtube.js';
+import { log, parseIsoDuration } from './utils.js';
 
-// CTR rescue loop: a thumbnail is the single highest-leverage packaging element,
-// and it's the one thing that can be swapped on an already-published video
-// without re-uploading. Each run finds at most ONE long-form video whose CTR is
-// demonstrably below the channel's own median (enough impressions to be a
-// verdict, young enough that a swap still changes the video's trajectory),
-// regenerates its thumbnail with a fresh layout, and replaces it. One per run
-// keeps FLUX inside the free tier and makes each swap a clean experiment; each
-// video is rescued at most once so thumbnails never thrash back and forth.
+// Re-exported for existing consumers/tests that import it from here.
+export { parseIsoDuration } from './utils.js';
+
+// CTR rescue loop: thumbnail and title are the two packaging levers that can be
+// swapped on an already-published video without re-uploading. Each run finds at
+// most ONE long-form video whose CTR is demonstrably below the channel's own
+// median (enough impressions to be a verdict, young enough that a swap still
+// changes the video's trajectory) and pulls ONE lever — alternating between
+// thumbnail and title across runs, so over time the rescue log doubles as an
+// A/B record of which lever actually moves CTR on this channel. One rescue per
+// run keeps FLUX inside the free tier and makes each swap a clean experiment;
+// each video is rescued at most once so packaging never thrashes back and forth.
 
 // Shorts are excluded: their feed surface barely shows the thumbnail, so a swap
 // can't move their CTR. Anything longer than this is long-form here.
@@ -46,26 +51,46 @@ function getClients() {
   };
 }
 
-// --- State file (video ids already rescued, one per line) ----------------------
+// --- State file ("videoId<TAB>lever" per line, in rescue order) -------------------
 
-export function loadRescuedIds(file: string = CTR_RESCUED_FILE): Set<string> {
+export type RescueLever = 'thumbnail' | 'title';
+
+export interface RescueRecord {
+  videoId: string;
+  lever: RescueLever;
+}
+
+// Bare-id lines (the pre-title-lever format) read as thumbnail rescues, so an
+// existing state file stays valid.
+export function parseRescueState(text: string): RescueRecord[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => {
+      const [videoId, lever] = line.split('\t').map((s) => s?.trim());
+      if (!videoId) return null;
+      return { videoId, lever: lever === 'title' ? 'title' : 'thumbnail' } as RescueRecord;
+    })
+    .filter((r): r is RescueRecord => r !== null);
+}
+
+// Strict alternation: thumbnail first (the stronger lever), then title, and so
+// on. Over time this yields matched samples of both levers for comparison.
+export function nextRescueLever(last: RescueLever | null | undefined): RescueLever {
+  return last === 'thumbnail' ? 'title' : 'thumbnail';
+}
+
+export function loadRescueRecords(file: string = CTR_RESCUED_FILE): RescueRecord[] {
   try {
-    return new Set(
-      fs
-        .readFileSync(file, 'utf-8')
-        .split(/\r?\n/)
-        .map((s) => s.trim())
-        .filter(Boolean),
-    );
+    return parseRescueState(fs.readFileSync(file, 'utf-8'));
   } catch {
-    return new Set();
+    return [];
   }
 }
 
-export function saveRescuedIds(ids: Set<string>, file: string = CTR_RESCUED_FILE): void {
+export function saveRescueRecords(records: RescueRecord[], file: string = CTR_RESCUED_FILE): void {
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, [...ids].join('\n'), 'utf-8');
+    fs.writeFileSync(file, records.map((r) => `${r.videoId}\t${r.lever}`).join('\n'), 'utf-8');
   } catch (e) {
     log(`CTR rescue: could not persist state (continuing): ${(e as Error).message}`);
   }
@@ -83,14 +108,6 @@ export interface RescueRow {
   impressions: number;
   // Click-through rate on impressions (0–100), as the Analytics API reports it.
   ctr: number;
-}
-
-// Parses an ISO 8601 duration ("PT9M58S") to seconds. Returns 0 when unparsable
-// so an unknown duration classifies as a Short and is safely skipped.
-export function parseIsoDuration(iso: string | null | undefined): number {
-  const m = iso?.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
-  if (!m) return 0;
-  return Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
 }
 
 export function median(values: number[]): number {
@@ -144,13 +161,55 @@ export function seriesForPublishedAt(publishedAt: string): Series {
   return ACTIVE_SERIES_POOL.find((s) => s.key === key) ?? ACTIVE_SERIES_POOL[0]!;
 }
 
+// --- Title lever -------------------------------------------------------------------
+
+// YouTube's hard title limit.
+const TITLE_MAX_CHARS = 100;
+
+// Asks the script CLI for a sharper title for an underperforming video. The
+// rewrite must stay true to the published video (invariant #1 extends to
+// packaging: no promising content the video doesn't deliver), so the prompt
+// only reframes what the current title already claims. Null on any failure or
+// unusable output — the caller falls back to the thumbnail lever.
+export async function generateRescueTitle(currentTitle: string): Promise<string | null> {
+  const prompt = `An educational science mini-documentary on YouTube is underperforming on click-through rate. Rewrite its title to be more clickable WITHOUT changing what the video is about.
+
+Current title: ${currentTitle}
+
+Rules:
+- Same subject, same claim — only sharpen the framing. Do NOT invent facts, numbers, or promises the current title doesn't already make.
+- Open a curiosity gap: concrete stakes or a specific oddity, not vague hype.
+- Under ${TITLE_MAX_CHARS} characters. No clickbait ALL-CAPS words, no emojis, no quotation marks, no trailing punctuation.
+- It must read clearly differently from the current title.
+
+Output ONLY the new title text, nothing else.`;
+  try {
+    const raw = (await runClaudeCli(prompt)).trim();
+    const title = raw.split(/\r?\n/)[0]?.replace(/^["']|["']$/g, '').trim() ?? '';
+    if (!title || title.length > TITLE_MAX_CHARS) return null;
+    if (title.toLowerCase() === currentTitle.trim().toLowerCase()) return null;
+    // Programmatic claim guard (the prompt rule alone isn't enough for a live
+    // swap): a number the current title never made is a fabricated claim.
+    const newNums = title.match(/\d[\d,.]*/g) ?? [];
+    if (newNums.some((n) => !currentTitle.includes(n))) return null;
+    // Meta/preface output ("Here's a sharper title:") passes the length checks
+    // but must never ship.
+    if (/^(here|sure|okay|certainly|new title)\b/i.test(title) || /[:：]$/.test(title)) return null;
+    return title;
+  } catch (e) {
+    log(`CTR rescue: title generation failed (${(e as Error).message})`);
+    return null;
+  }
+}
+
 // --- Main entry (called at the end of the pipeline; non-fatal) ------------------
 
-export async function rescueWorstThumbnail(): Promise<void> {
+export async function rescueWorstPackaging(): Promise<void> {
   if (!ENABLE_CTR_RESCUE) return;
   try {
     const { analytics, data } = getClients();
-    const rescued = loadRescuedIds();
+    const records = loadRescueRecords();
+    const rescued = new Set(records.map((r) => r.videoId));
 
     const endDate = new Date().toISOString().slice(0, 10);
     const startDate = new Date(Date.now() - CTR_RESCUE_MAX_AGE_DAYS * 86_400_000)
@@ -216,29 +275,50 @@ export async function rescueWorstThumbnail(): Promise<void> {
     const candidates = measured.filter((r) => isRescueCandidate(r, rescued));
     const target = pickRescueTarget(candidates, measured);
     if (!target) {
-      log('CTR rescue: no underperforming thumbnail found — nothing to do.');
+      log('CTR rescue: no underperforming video found — nothing to do.');
       return;
     }
 
+    let lever = nextRescueLever(records.at(-1)?.lever ?? null);
     log(
-      `CTR rescue: regenerating thumbnail for ${target.videoId} ` +
+      `CTR rescue: ${lever} lever on ${target.videoId} ` +
         `("${target.title.slice(0, 60)}", CTR ${target.ctr.toFixed(2)}% ` +
         `on ${target.impressions} impressions, channel median ${median(
           measured.map((r) => r.ctr),
         ).toFixed(2)}%)`,
     );
 
-    const series = seriesForPublishedAt(target.publishedAt);
-    const layout = THUMB_LAYOUTS[Math.floor(Math.random() * THUMB_LAYOUTS.length)]!;
-    // Dedicated subdir so the rescue render never clobbers this run's own
-    // work/thumb output.
-    const rescueDir = path.join(WORK_DIR, 'ctr_rescue');
-    const thumbPath = await makeThumbnail(target.title, series, layout, rescueDir);
-    await setThumbnail(target.videoId, thumbPath);
+    if (lever === 'title') {
+      const newTitle = await generateRescueTitle(target.title);
+      if (newTitle) {
+        await updateVideoTitle(target.videoId, newTitle);
+        log(`CTR rescue: replaced title on ${target.videoId} → "${newTitle}"`);
+      } else {
+        // Unusable rewrite — fall back to the thumbnail lever so the run's one
+        // rescue slot isn't wasted (and the alternation retries title next time).
+        log('CTR rescue: title rewrite unusable — falling back to the thumbnail lever.');
+        lever = 'thumbnail';
+      }
+    }
 
-    rescued.add(target.videoId);
-    saveRescuedIds(rescued);
-    log(`CTR rescue: replaced thumbnail on ${target.videoId} (layout: ${layout})`);
+    if (lever === 'thumbnail') {
+      const series = seriesForPublishedAt(target.publishedAt);
+      // CTR-weighted layout draw, excluding the layout this video already wears
+      // (when logged) so the replacement is guaranteed to look different.
+      const currentLayout =
+        loadLayoutLog().find((e) => e.videoId === target.videoId)?.layout ?? null;
+      // persist:false — the no-repeat state belongs to the daily upload draw.
+      const layout = pickThumbLayoutWeighted(measured, currentLayout, false);
+      // Dedicated subdir so the rescue render never clobbers this run's own
+      // work/thumb output.
+      const rescueDir = path.join(WORK_DIR, 'ctr_rescue');
+      const thumbPath = await makeThumbnail(target.title, series, layout, rescueDir);
+      await setThumbnail(target.videoId, thumbPath);
+      recordThumbLayout(target.videoId, layout);
+      log(`CTR rescue: replaced thumbnail on ${target.videoId} (layout: ${layout})`);
+    }
+
+    saveRescueRecords([...records, { videoId: target.videoId, lever }]);
   } catch (e) {
     log(`CTR rescue skipped (continuing): ${(e as Error).message}`);
   }

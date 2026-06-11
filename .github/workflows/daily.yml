@@ -123,6 +123,7 @@ jobs:
             work/.last-upload-date
             work/.commented-videos
             work/.ctr-rescued
+            work/.thumb-layout-log
           key: rotation-state-${{ github.run_id }}
           restore-keys: |
             rotation-state-

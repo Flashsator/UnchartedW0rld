@@ -30,6 +30,21 @@ export async function setThumbnail(videoId: string, thumbnailPath: string): Prom
   log(`Thumbnail set on ${videoId}`);
 }
 
+// Swaps an already-published video's title (the CTR-rescue title lever).
+// videos.update replaces the whole snippet, so the current one is fetched first
+// and only the title changes — categoryId is mandatory on update.
+export async function updateVideoTitle(videoId: string, newTitle: string): Promise<void> {
+  const yt = getClient();
+  const res = await yt.videos.list({ part: ['snippet'], id: [videoId] });
+  const snippet = res.data.items?.[0]?.snippet;
+  if (!snippet) throw new Error(`updateVideoTitle: video ${videoId} not found`);
+  await yt.videos.update({
+    part: ['snippet'],
+    requestBody: { id: videoId, snippet: { ...snippet, title: newTitle } },
+  });
+  log(`Title updated on ${videoId}: "${newTitle}"`);
+}
+
 export type UploadOptions = {
   publishAt?: Date;
   isShorts?: boolean;
