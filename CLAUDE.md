@@ -81,6 +81,17 @@ heartbeat monitor).
    (`buildAttribution` in `src/attribution.ts`, fed by the `imageCredits`
    collector in `pipeline.ts`). For common subjects the providers already fill
    the quota, so this never fires.
+   **Relevance beats resolution (user directive 2026-06-11).** Candidate clips
+   are filtered/ranked by per-clip provider metadata against the beat query
+   (`filterAndRankByRelevance` in `src/stock.ts`); resolution NEVER excludes a
+   landscape clip — sub-720 renditions are still accepted
+   (`pickBestVideoFile`'s last tier) and only demoted to the back of the
+   relevance-ranked pool (`orderPoolByPreference`), same as too-short clips.
+   Don't reintroduce a hard resolution cutoff on the landscape path: a soft
+   on-subject clip beats a sharp off-subject one. The single exception is
+   portrait Shorts b-roll, which keeps a 1280px hard floor because
+   center-cropping a relevant 1080p landscape clip (the guaranteed fallback)
+   is sharper than a soft portrait file.
 4. **Length is mandatory.** Scripts target ~`TARGET_MINUTES` (9.5–10 min) so the
    final cut clears 8:00 for YouTube mid-roll ads. There's a word-count floor in
    the script prompt; don't lower it.
