@@ -29,16 +29,21 @@ function totalNarrationWords(ep: Episode): number {
   );
 }
 
+// Kept deliberately varied in FLAVOR: recent episodes all converged on the same
+// "documentaries skip this" conspiracy framing, which reads as a template to a
+// binge viewer — so only a minority of these reference documentaries/coverage,
+// and none state the video's runtime aloud (a spoken "9.5 minutes" is jarring
+// and half-breaks the fourth wall).
 const PROMISE_TAIL_PHRASINGS: string[] = [
   "By the end of this video, you'll know <specific reveal> — and why almost no one talks about it.",
   "Stay with me. The part they leave out is the part that matters.",
-  `In the next ${TARGET_MINUTES} minutes, we'll show you the detail every documentary skips.`,
   "What comes next is the part no documentary tells you.",
-  "Before this video ends, you'll see why researchers stopped publishing about <specific thing>.",
   "Watch closely — there is a detail in this story almost everyone misses.",
-  "By the last frame, you'll understand why this was almost never reported.",
-  "Stay with me. The strangest part of this is not what you think it is.",
   "What we're about to show you was quietly confirmed and quietly forgotten.",
+  "Stay with me. The strangest part of this is not what you think it is.",
+  "In a moment, you'll see how <specific event> actually happens — and it should not be possible.",
+  "The answer is hiding in <specific place or body part>, and once you see it, you cannot unsee it.",
+  "Everything you were taught about <subject> is missing one detail — and it rewrites the story.",
   "Keep watching — the implication at the end is the reason we made this.",
 ];
 
@@ -156,6 +161,7 @@ Rules:
 - Never break the fourth wall ("welcome back", "in today's video", "don't forget to subscribe" — handled separately).
 - Cite specific numbers, species, places, dates where they sharpen the story.
 - No emoji, no markdown inside narration.
+- SPOKEN DELIVERY (the narration is read aloud by a TTS voice and auto-captioned — write for the ear): use the subject's COMMON name throughout; the Latin binomial may be spoken AT MOST once in the entire script (introduce it once, then drop it). Avoid obscure technical units and IUPAC-style chemical names — say what the thing IS in plain spoken English that remains factually accurate (e.g. prefer 'a faint static charge' over 'tens of picocoulombs'; prefer 'a rare antimalarial compound' over naming the naphthoquinone), keeping any digits you still state accurate. Never stack multiple technical terms in one sentence.
 - B-ROLL RELEVANCE (CRITICAL): every "visual" and every "visuals" entry must keep the "subject" visible. Lead each query with the subject noun, then vary the scene, action, or setting. The viewer should SEE the subject in most shots — not unrelated stock footage. If a beat is about history/discovery/data, still anchor on the subject (e.g. 'cave spider specimen under museum glass'), never a generic 'old archive' shot that drops it.
 - SHOT-BY-SHOT (CRITICAL): "visuals" must walk this section's narration in order — the first entry depicts what is said first, the last entry what is said last, so the viewer is always looking at the thing currently being described. Do not repeat the same shot; advance the scene as the narration advances. Every entry stays anchored to the subject.
 
@@ -192,7 +198,7 @@ Opening rule (CRITICAL — TWO-PART OPEN, THIS RUN'S HOOK STYLE: "${hook.name}")
 
 - Sentence 2 of section 0 is the PROMISE TAIL — a single sentence that tells the viewer what they will discover, framed as quietly withheld from public attention. Pick ONE phrasing from this list and adapt it to today's specific topic:
 ${PROMISE_TAIL_PHRASINGS.map((p) => `  * "${p}"`).join('\n')}
-  Make the promise concrete and ominous, not generic.
+  Make the promise concrete and ominous, not generic. Do NOT default to the "documentary/coverage" flavored phrasings — prefer one that promises a concrete sight or reveal; the whole script may reference documentaries/field guides/textbooks "missing this" AT MOST once. Never state the video's runtime aloud.
 - Sentence 3 onwards in section 0 begins the actual narrative as section 0's role specifies.
 
 Per-section roles (every section, in order — follow EXACTLY):
