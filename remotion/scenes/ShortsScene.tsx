@@ -105,8 +105,11 @@ export function ShortsScene({ manifest }: ShortsSceneProps) {
       ? manifest.cutTimes
       : clips.map((_, i) => (i * manifest.duration) / Math.max(1, clips.length));
 
-  // End card: after the narration ends, a "subscribe + watch full video" panel
-  // fades in over the outro window so the short doesn't stop abruptly.
+  // End card: only when the manifest carries an outro window (outroSec > 0)
+  // does the "subscribe + watch full video" panel fade in after the narration.
+  // The pipeline currently ships outroSec = 0 so Shorts loop seamlessly
+  // (replay rate is an algorithm signal); the card is kept for reversibility.
+  const hasOutro = (manifest.outroSec ?? 0) > 0.1;
   const narrationSec = manifest.narrationSec ?? manifest.duration;
   const endStart = Math.round(narrationSec * fps);
   const endOpacity = interpolate(frame, [endStart, endStart + 12], [0, 1], {
@@ -203,7 +206,7 @@ export function ShortsScene({ manifest }: ShortsSceneProps) {
         sectionIdx={manifest.sectionIdx}
       />
 
-      {endOpacity > 0 && (
+      {hasOutro && endOpacity > 0 && (
         <AbsoluteFill
           style={{
             opacity: endOpacity,

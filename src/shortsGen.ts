@@ -9,9 +9,13 @@ import { PUBLISH_HOUR_UTC } from './config.js';
 import { log } from './utils.js';
 
 const MAX_SHORTS_SEC = 55;
-// End card (subscribe + watch full video) shown after the narration ends so the
-// short doesn't cut off abruptly.
-const OUTRO_SEC = 2.6;
+// No end-card padding: Shorts loop, and replay rate is a ranking signal the
+// algorithm weighs heavily. Ending the cut right where the narration ends (the
+// trim already lands on a sentence boundary) makes the loop seam tight, so the
+// video restarts mid-curiosity instead of dying on a 2.6s static subscribe
+// panel viewers swipe away from. The long-video funnel lives in the
+// description's "▶ Full video:" link, not on-screen.
+const OUTRO_SEC = 0;
 
 // Same-day teaser short publishes a couple hours AFTER the long video (which
 // lands at PUBLISH_HOUR_UTC) so the two don't split the launch slot and the

@@ -31,6 +31,9 @@ import { buildChapters, muxAudio, muxShortsAudio, writeSrt } from './mux.js';
 import { buildAttribution, shortsMusicLine } from './attribution.js';
 import { addToSeriesPlaylist, listUploadedTitles, uploadCaption, uploadVideo } from './youtube.js';
 import { fetchTopPerformingTitles } from './analytics.js';
+import { validateTopicDemand } from './topicResearch.js';
+import { autoCommentOnRecentVideos } from './engage.js';
+import { rescueWorstThumbnail } from './ctrRescue.js';
 import { extractIconEvents } from './iconExtractor.js';
 import { computeCutTimes } from './cuts.js';
 import { buildShortsManifest, planShortsForToday, publishAtFor } from './shortsGen.js';
@@ -106,6 +109,10 @@ async function main(): Promise<void> {
       log(`Analytics feedback: steering title toward ${winningTitles.length} proven winners.`);
     }
   }
+  // Opt-in topic steer: score a handful of candidate angles against real
+  // YouTube search demand and prefer the proven winner. Best-effort — undefined
+  // (disabled or any failure) leaves the script model's own topic choice intact.
+  const topicDirective = await validateTopicDemand(series, subTheme, priorTitles);
   const { episode, hookPattern } = await generateEpisode(
     series,
     structure,
@@ -113,6 +120,7 @@ async function main(): Promise<void> {
     subTheme,
     priorTitles,
     winningTitles,
+    topicDirective,
   );
   fs.writeFileSync(path.join(runDir, 'episode.json'), JSON.stringify(episode, null, 2));
 
@@ -351,6 +359,14 @@ async function main(): Promise<void> {
   await uploadCaption(videoId, path.join(runDir, 'captions.srt'));
 
   await runShortsPipeline(manifest, episode, series.categoryId, runDir, today, videoId, bgmCreditLine);
+
+  // End-of-run housekeeping over PAST uploads (each opt-in via its env flag and
+  // fully non-fatal): seed one engagement comment under each recently-public
+  // video that lacks ours, and rescue at most one underperforming long-form
+  // thumbnail. Runs only on real (non-DRY_RUN) runs — the early DRY_RUN return
+  // above skips it.
+  await autoCommentOnRecentVideos();
+  await rescueWorstThumbnail();
 }
 
 async function runShortsPipeline(

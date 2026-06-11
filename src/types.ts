@@ -172,8 +172,10 @@ export type ShortsManifest = {
   cardHook: string;
   sectionIdx: number;
   audioPath: string;
-  // Total composition length = narrationSec + outroSec. Narration plays for
-  // narrationSec, then an end card (subscribe + watch full video) fills outroSec.
+  // Total composition length = narrationSec + outroSec. outroSec is currently 0
+  // so the short ends exactly where the narration ends and loops seamlessly
+  // (replay rate is a Shorts ranking signal). When outroSec > 0, ShortsScene
+  // fades in an end card (subscribe + watch full video) over that window.
   duration: number;
   narrationSec: number;
   outroSec: number;

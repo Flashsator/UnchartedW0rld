@@ -107,9 +107,23 @@ real selectable caption track via `captions.insert` — **needs the
 it on 2026-06-08, so this works — if it ever 403s again, the token lost the scope),
 and localized title/description metadata (`translateMetadata` in `scriptGen.ts`
 reuses the script-gen Claude CLI to translate the title + prose blurb into
-es/pt/hi/id; passed as `videos.insert` `localizations`). The channel stays
+es/pt/hi/id/fr/de/ja; passed as `videos.insert` `localizations`). The channel stays
 **English-primary** (`defaultLanguage: 'en'`, base snippet + audio + burned-in
 on-screen text unchanged) — localization is discovery metadata only.
+
+After the Shorts pipeline, two more **opt-in housekeeping passes** run over PAST
+uploads (env-gated, non-fatal, skipped on DRY_RUN via the early return):
+`autoCommentOnRecentVideos` (`src/engage.ts`, `ENABLE_AUTO_COMMENT`) posts one
+reply-bait engagement comment under each recently-public video that lacks ours —
+comments can't be posted on private/scheduled videos, so today's upload gets its
+comment on the NEXT run; and `rescueWorstThumbnail` (`src/ctrRescue.ts`,
+`ENABLE_CTR_RESCUE`) finds at most ONE long-form video (2–21 days old, ≥300
+impressions) whose CTR is below 70% of the channel median, regenerates its
+thumbnail (fresh layout, FLUX), and swaps it via `thumbnails.set`. One rescue
+per run (FLUX free tier), one rescue per video ever. Their state files
+(`work/.commented-videos`, `work/.ctr-rescued`) ride the `rotation-state-`
+cache in `daily.yml` — **any new state file must be added to that cache's
+`path:` list** or it silently resets every run.
 
 ## Config & env overrides
 
@@ -131,6 +145,20 @@ on-screen text unchanged) — localization is discovery metadata only.
   CTA — that's expected, not a bug. The token carries four scopes:
   `youtube.upload`, `youtube`, `youtube.force-ssl`, `yt-analytics.readonly`
   (`scripts/bootstrap_youtube_token.ts` requests all four; re-mint there to change).
+- **Topic demand validation:** `ENABLE_TOPIC_VALIDATION` (`'1'` in `daily.yml`).
+  Before script-gen, `validateTopicDemand` (`src/topicResearch.ts`) asks the
+  script CLI for `TOPIC_CANDIDATE_COUNT` (5) candidate angles — each pinned to a
+  common stock-filmed creature per invariant #3 — scores each by the median view
+  count of its query's top YouTube search hits (search.list = 100 quota units
+  each, ~500/run of the 10k daily budget), and feeds the winner to
+  `generateEpisode` as a topic *steer*, not an order: the script model still
+  owns the episode and every safety rule. Any failure falls back silently to the
+  model's own topic choice.
+- **Shorts loop seamlessly (by design):** `OUTRO_SEC = 0` in `src/shortsGen.ts` —
+  a Short ends exactly where its narration ends so it loops mid-curiosity
+  (replay rate is a Shorts ranking signal). The subscribe/watch-full end card in
+  `ShortsScene.tsx` is kept for reversibility but only renders when
+  `outroSec > 0`; the funnel lives in the description link (next bullet).
 - **Schedule:** `PUBLISH_WEEKDAYS_UTC = [1,3,5]`; `WEEKDAY_SERIES_MAP` = Mon→animals,
   Wed→insects, Fri→plants. The run is *triggered* at 13:00 UTC but each long video
   is *scheduled public* at `PUBLISH_HOUR_UTC` = **19:00 UTC** (the US-afternoon
@@ -161,7 +189,9 @@ on-screen text unchanged) — localization is discovery metadata only.
 - **Override env vars** (handy for local testing): `DRY_RUN`, `WEEKDAY=N`,
   `SHORTS_PLAN_WEEKDAY=N`, `SERIES_KEY`, `SUB_THEME`, `STRUCTURE_KEY`, `TONE_KEY`,
   `VOICE_ID`, `SECTION_COUNT`, `TARGET_MINUTES`, `FORCE_RUN`, `TEST_MODE`,
-  `FLUX_STEPS`, `REMOTION_CONCURRENCY`.
+  `FLUX_STEPS`, `REMOTION_CONCURRENCY`; growth-automation gates (all default
+  OFF locally, `'1'` in `daily.yml`): `ENABLE_ANALYTICS_FEEDBACK`,
+  `ENABLE_TOPIC_VALIDATION`, `ENABLE_AUTO_COMMENT`, `ENABLE_CTR_RESCUE`.
 
 ## Conventions
 

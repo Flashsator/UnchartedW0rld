@@ -61,6 +61,51 @@ export const ENABLE_ANALYTICS_FEEDBACK = process.env.ENABLE_ANALYTICS_FEEDBACK =
 export const ANALYTICS_LOOKBACK_DAYS = Number(process.env.ANALYTICS_LOOKBACK_DAYS ?? 90);
 export const ANALYTICS_TOP_N = Number(process.env.ANALYTICS_TOP_N ?? 8);
 
+// --- Auto engagement comment (opt-in) ----------------------------------------
+// When ENABLE_AUTO_COMMENT=1, the end of each pipeline run posts ONE pinned-style
+// engagement comment (a reply-bait question) under each recently-PUBLIC video
+// that doesn't have one yet. Comments can't be posted on private/scheduled
+// videos, so today's upload gets its comment on the NEXT run, once live.
+// Best-effort/non-fatal; needs the youtube.force-ssl scope (already on the token).
+export const ENABLE_AUTO_COMMENT = process.env.ENABLE_AUTO_COMMENT === '1';
+// Video ids already commented on (one per line), persisted across ephemeral
+// runners via the rotation-state cache like the other .last-* files.
+export const COMMENTED_VIDEOS_FILE = path.join(WORK_DIR, '.commented-videos');
+// How far back a video still counts as "recent" for auto-commenting, and the
+// per-run cap so a backlog never floods the channel with same-minute comments.
+export const AUTO_COMMENT_RECENT_DAYS = Number(process.env.AUTO_COMMENT_RECENT_DAYS ?? 7);
+export const AUTO_COMMENT_MAX_PER_RUN = Number(process.env.AUTO_COMMENT_MAX_PER_RUN ?? 3);
+
+// --- CTR rescue loop (opt-in) -------------------------------------------------
+// When ENABLE_CTR_RESCUE=1, the end of each run finds at most ONE long-form
+// video whose thumbnail is demonstrably underperforming (enough impressions,
+// CTR well below the channel median) and regenerates + replaces its thumbnail.
+// One per run keeps FLUX inside the free tier (~7 images/day) and makes each
+// swap a clean before/after experiment. Best-effort/non-fatal.
+export const ENABLE_CTR_RESCUE = process.env.ENABLE_CTR_RESCUE === '1';
+// Video ids whose thumbnail was already rescued (one per line) — each video
+// gets at most one rescue so we never thrash a thumbnail back and forth.
+export const CTR_RESCUED_FILE = path.join(WORK_DIR, '.ctr-rescued');
+// Eligibility window: old enough that CTR is measured on real impressions, young
+// enough that a better thumbnail still changes the video's trajectory.
+export const CTR_RESCUE_MIN_AGE_DAYS = Number(process.env.CTR_RESCUE_MIN_AGE_DAYS ?? 2);
+export const CTR_RESCUE_MAX_AGE_DAYS = Number(process.env.CTR_RESCUE_MAX_AGE_DAYS ?? 21);
+// Below this many impressions CTR is statistical noise, not a verdict.
+export const CTR_RESCUE_MIN_IMPRESSIONS = Number(process.env.CTR_RESCUE_MIN_IMPRESSIONS ?? 300);
+// A video qualifies when its CTR < this fraction of the long-form median CTR.
+export const CTR_RESCUE_THRESHOLD = Number(process.env.CTR_RESCUE_THRESHOLD ?? 0.7);
+
+// --- Topic demand validation (opt-in) -----------------------------------------
+// When ENABLE_TOPIC_VALIDATION=1, before writing the script the pipeline asks
+// the script model for a handful of candidate angles, scores each against real
+// YouTube search results (median view count of the top hits = proven audience
+// demand), and feeds the winner to generateEpisode as a topic steer. Costs
+// ~500 Data API quota units per run (search.list = 100/each) out of the 10k
+// daily budget. Best-effort/non-fatal — any failure falls back to the model's
+// own topic choice.
+export const ENABLE_TOPIC_VALIDATION = process.env.ENABLE_TOPIC_VALIDATION === '1';
+export const TOPIC_CANDIDATE_COUNT = Number(process.env.TOPIC_CANDIDATE_COUNT ?? 5);
+
 // Appended to every long-form description (after chapters, before attribution)
 // so each video carries a consistent channel pitch + subscribe CTA. The
 // ?sub_confirmation=1 link only opens the subscribe prompt on a /channel/UC...

@@ -126,6 +126,21 @@ npm run studio                 # open Remotion Studio to iterate on visuals
 - Schedule is driven by an **Upstash QStash schedule** (cron `0 13 * * 1,3,5`), which dispatches `daily.yml` via a fine-grained GitHub PAT (Actions-only write, scoped to this repo), forwarded in the `Upstash-Forward-Authorization` header. See `docs/scheduling-troubleshooting.md` for setup and the schedule-read token-leak hazard.
 - `daily.yml` (`timeout-minutes: 240`, `runs-on: ubuntu-latest`) installs ffmpeg, Chromium, fonts, and Remotion, then runs the pipeline end-to-end. Can also be triggered manually from the Actions tab.
 
+## Growth automations (opt-in, all best-effort/non-fatal)
+
+Each is gated by an env flag (set to `'1'` in `daily.yml`, OFF by default locally) and wrapped in try/catch so a failure never blocks an upload:
+
+| Flag | What it does | Module |
+|---|---|---|
+| `ENABLE_ANALYTICS_FEEDBACK` | Ranks past videos by CTR/retention/views; feeds the top title into the outro "Watch next" card + title-generation hints | `src/analytics.ts` |
+| `ENABLE_TOPIC_VALIDATION` | Before script-gen, proposes candidate angles and scores each against real YouTube search results (median views of top hits); the proven winner steers the episode topic | `src/topicResearch.ts` |
+| `ENABLE_AUTO_COMMENT` | End of each run, posts one engagement comment (a reply-bait question) under each recently-public video without one — today's upload gets its comment on the *next* run, once live | `src/engage.ts` |
+| `ENABLE_CTR_RESCUE` | Finds at most ONE long-form video (2–21 days old, ≥300 impressions) whose CTR is <70% of the channel median, regenerates its thumbnail with a fresh layout, and swaps it in. Each video is rescued at most once | `src/ctrRescue.ts` |
+
+Auto-comment and CTR-rescue persist their "already done" sets in `work/.commented-videos` / `work/.ctr-rescued`, cached across ephemeral CI runners via the `rotation-state-` cache in `daily.yml` — any new state file must be added to that cache's `path:` list.
+
+Shorts are cut **loop-friendly**: the composition ends exactly where the narration ends (`OUTRO_SEC = 0`, no end card), so the Short restarts mid-curiosity — replay rate is a Shorts ranking signal. The long-video funnel lives in the description's `▶ Full video:` link. Long-form metadata is also localized (title + blurb) into **es/pt/hi/id/fr/de/ja** as discovery metadata; the channel stays English-primary.
+
 ## Repo layout
 
 ```
@@ -138,6 +153,10 @@ src/             pipeline modules (one per stage)
   render.ts      Remotion bundle + renderMedia
   mux.ts         ffmpeg audio mux + SRT
   youtube.ts     googleapis upload
+  analytics.ts   top-performer feedback loop (opt-in)
+  topicResearch.ts  topic demand validation vs YouTube search (opt-in)
+  engage.ts      auto engagement comments on recent videos (opt-in)
+  ctrRescue.ts   underperforming-thumbnail rescue loop (opt-in)
   pipeline.ts    orchestrator (entry point)
 remotion/        composition + scenes (Intro / SectionScene / AmbientBreather / Outro)
 scripts/         bootstrap_youtube_token.ts

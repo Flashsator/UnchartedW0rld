@@ -121,7 +121,7 @@ Shape:
 {
   "title": "string, 50-70 chars, ${structure.label} framing, no clickbait lies",
   "hook": "string, 1 sentence, 8-14 words — the cold-open line of section 0",
-  "description": "string, 600-1000 chars, YouTube description with 3 hashtags at the end. The FIRST sentence must state the single most surprising fact of the episode (the payoff) before any location or setup — it is the only line viewers see before the fold, so it must hook. Then expand.",
+  "description": "string, 600-1000 chars, YouTube description with 3 hashtags at the end. The FIRST sentence must state the single most surprising fact of the episode (the payoff) before any location or setup — it is the only line viewers see before the fold, so it must hook. The first TWO sentences together must also naturally contain the subject's common name AND 1-2 phrases a curious viewer would actually type into YouTube search for this topic (e.g. 'how do cats drink water', 'why do termites explode') — woven into natural prose, NEVER a keyword list. Then expand.",
   "tags": ["10-15 single-word or 2-word tags. Include 3-4 BROAD high-search-volume terms a curious non-expert would actually type (e.g. 'weird animals', 'nature documentary', 'insect defense', 'did you know') alongside the precise scientific names — not only academic jargon"],
   "subject": "string, 1-3 words — the ONE concrete, photographable thing this whole episode is about (a creature, object, place, or person), e.g. 'cat', 'honeybee', 'octopus', 'Venus flytrap'. This is the visual anchor for EVERY b-roll query below. Must be a real, searchable noun, not an abstract idea. STOCK-FOOTAGE RULE (CRITICAL): pick a COMMON, widely-filmed creature that free stock libraries (Pexels, Pixabay) reliably have real video of — a familiar animal/insect/plant a stranger could picture instantly. Do NOT pick an obscure species stock libraries have never filmed (e.g. a rare bird like a 'chough', an unfilmed deep-sea worm); those force the b-roll onto generic unrelated scenery (random landscapes) because the providers fuzzy-match a no-result query. The SURPRISE must come from the ANGLE, not from an exotic subject: a familiar creature doing something almost nobody knows about.",
   "thumbnailConcept": "string, 8-20 words — a SINGLE concrete, photographable real-world scene for the thumbnail background that instantly reads as this topic to a stranger AND is visually dramatic through CONTRAST: a bright, vividly-lit, sharply-focused subject that pops off the frame, saturated color, a tense moment or unexpected pose, crisp directional or rim light that sculpts the subject. The subject must stay BRIGHT and clearly visible — 'dramatic' must NOT mean a dark, dim, or muddy image; never bury the subject in shadow (it renders unreadable on a phone feed). The subject must occupy a LARGE central portion of the frame (fill roughly half its width) so it stays instantly recognizable at small phone-feed thumbnail size — a tiny subject lost in a wide scene reads as nothing. Describe ONE clear subject + setting + lighting. NO abstract textures, NO extreme macro close-ups, NO collages, NO flat evenly-lit specimen shots, NO overall-dark scenes. Good: 'a single termite filling the frame, its back glowing vivid electric blue under crisp directional light, sharp against a clean contrasting background'. Bad: 'a termite on pale wood with a small blue patch, flat lighting', 'a dim dark moody scene', 'micro-detail biology', 'abstract neural patterns'.",
@@ -212,6 +212,7 @@ export async function generateEpisode(
   subTheme: string,
   avoidTitles: string[] = [],
   winningTitles: string[] = [],
+  topicDirective?: string,
 ): Promise<{ episode: Episode; hookPattern: string }> {
   const hook = pickHookPattern(structure);
   // Feed recently-published titles to the model so it steers away from topics
@@ -234,12 +235,19 @@ export async function generateEpisode(
           .map((t) => `- ${t}`)
           .join('\n')}`
       : '';
+  // Demand-validated topic steer (from topicResearch): a candidate angle that
+  // scored well against real YouTube search results. A *steer*, not an order —
+  // the model still owns subject choice and must keep every rule above (common
+  // stock-filmed creature, no already-published collision).
+  const directiveBlock = topicDirective
+    ? `\n\nTOPIC STEER (validated against real YouTube search demand — prefer this angle if it fits all rules above):\n${topicDirective}`
+    : '';
   const userPrompt = `Series: ${series.name}
 Theme: ${series.theme}
 Sub-topic focus: ${subTheme}
 Structural template: ${structure.label} (${structure.key})
 
-Pick ONE specific surprising topic within this sub-topic focus that fits a ${TARGET_MINUTES}-minute mini-documentary. Use the "${hook.name}" hook style for the opening. Follow the ${structure.label} per-section role specification exactly. Write the full script JSON now.${avoidBlock}${winBlock}`;
+Pick ONE specific surprising topic within this sub-topic focus that fits a ${TARGET_MINUTES}-minute mini-documentary. Use the "${hook.name}" hook style for the opening. Follow the ${structure.label} per-section role specification exactly. Write the full script JSON now.${avoidBlock}${winBlock}${directiveBlock}`;
 
   const fullPrompt = `${buildSystemPrompt(hook, structure, voice, subTheme)}\n\n---\n\n${userPrompt}`;
 
@@ -522,7 +530,9 @@ const SCRIPT_GEN_ATTEMPTS = 2;
 //   - 'claude-sonnet-4-6'  → faster, cheaper, plenty for documentary scripts
 const CLAUDE_MODEL = 'claude-opus-4-8';
 
-function runClaudeCli(prompt: string): Promise<string> {
+// Exported so sibling modules (topicResearch, ctrRescue) can reuse the same
+// headless-CLI plumbing (timeout, heartbeat, model pin) instead of duplicating it.
+export function runClaudeCli(prompt: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const args = ['-p', '--output-format', 'text', '--model', CLAUDE_MODEL];
     const proc = spawn('claude', args, {
@@ -593,6 +603,9 @@ export const LOCALIZE_LANGS: ReadonlyArray<{ code: string; name: string }> = [
   { code: 'pt', name: 'Portuguese' },
   { code: 'hi', name: 'Hindi' },
   { code: 'id', name: 'Indonesian' },
+  { code: 'fr', name: 'French' },
+  { code: 'de', name: 'German' },
+  { code: 'ja', name: 'Japanese' },
 ];
 
 export type LocalizedText = { title: string; description: string };
@@ -682,7 +695,8 @@ function extractBalancedObjects(s: string): string[] {
 
 // Builds ordered JSON candidate strings from raw CLI output: fenced blocks
 // first, then every balanced top-level object, then the whole trimmed string.
-function extractJsonCandidates(raw: string): string[] {
+// Exported so sibling modules parsing CLI JSON reuse the same tolerant scanner.
+export function extractJsonCandidates(raw: string): string[] {
   const candidates: string[] = [];
   const fenceRe = /```(?:json)?\s*([\s\S]+?)\s*```/g;
   let m: RegExpExecArray | null;

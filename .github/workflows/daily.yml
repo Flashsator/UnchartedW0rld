@@ -121,6 +121,8 @@ jobs:
             work/.last-thumb-layout
             work/.last-bgm
             work/.last-upload-date
+            work/.commented-videos
+            work/.ctr-rescued
           key: rotation-state-${{ github.run_id }}
           restore-keys: |
             rotation-state-
@@ -171,6 +173,14 @@ jobs:
           # logs the 403 and falls back to the plain subscribe CTA. Re-mint
           # YT_REFRESH_TOKEN with that scope to actually activate the card.
           ENABLE_ANALYTICS_FEEDBACK: '1'
+          # End-of-run housekeeping + pre-script topic steer (all best-effort/
+          # non-fatal; each quietly no-ops on missing scope or data):
+          #  - AUTO_COMMENT: seed one engagement comment under recently-public videos
+          #  - CTR_RESCUE: regenerate at most one underperforming long-form thumbnail
+          #  - TOPIC_VALIDATION: score candidate angles against real YouTube search demand
+          ENABLE_AUTO_COMMENT: '1'
+          ENABLE_CTR_RESCUE: '1'
+          ENABLE_TOPIC_VALIDATION: '1'
           SERIES_KEY: ${{ inputs.series_key }}
           SUB_THEME: ${{ inputs.sub_theme }}
           STRUCTURE_KEY: ${{ inputs.structure_key }}
