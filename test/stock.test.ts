@@ -2,7 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   allocateClipsAcrossBeats,
+  filterAndRankByRelevance,
+  interleaveRoundRobin,
   isPermissiveLicense,
+  pexelsSlugText,
+  pickBestVideoFile,
+  pixabayCategoryForSeries,
   preferredMoods,
   moodFromPath,
   parseCommonsResults,
@@ -241,4 +246,140 @@ test('parseCommonsResults drops an image whose license cannot be confirmed', () 
 test('parseCommonsResults handles an empty/error response', () => {
   assert.deepEqual(parseCommonsResults({}, 600), []);
   assert.deepEqual(parseCommonsResults({ query: { pages: {} } }, 600), []);
+});
+
+// --- pickBestVideoFile -----------------------------------------------------------
+
+const mp4 = (width: number, height: number) => ({
+  link: `f_${width}x${height}`,
+  width,
+  height,
+  file_type: 'video/mp4',
+});
+
+test('pickBestVideoFile takes the smallest landscape rendition at or above 1080', () => {
+  // 2160 would waste download time; 1080 matches the render output exactly.
+  const file = pickBestVideoFile([mp4(3840, 2160), mp4(1920, 1080), mp4(1280, 720)]);
+  assert.equal(file?.height, 1080);
+});
+
+test('pickBestVideoFile never selects a portrait rendition on a landscape search', () => {
+  // The pre-fix condition (height >= width) picked exactly these portrait
+  // files first, so the 720p fallback always won on real Pexels responses.
+  const file = pickBestVideoFile([mp4(1080, 1920), mp4(1920, 1080)]);
+  assert.equal(file?.link, 'f_1920x1080');
+});
+
+test('pickBestVideoFile falls back to the largest landscape file above 720 when nothing reaches 1080', () => {
+  const file = pickBestVideoFile([mp4(1280, 720), mp4(1706, 960)]);
+  assert.equal(file?.height, 960);
+});
+
+test('pickBestVideoFile returns null when nothing fits (too small or wrong container)', () => {
+  assert.equal(pickBestVideoFile([mp4(640, 360)]), null);
+  assert.equal(
+    pickBestVideoFile([{ link: 'h', width: 1920, height: 1080, file_type: 'video/hls' }]),
+    null,
+  );
+  assert.equal(pickBestVideoFile([]), null);
+});
+
+test('pickBestVideoFile portrait mode wants tall files, 1920 first then 1280 fallback', () => {
+  const full = pickBestVideoFile([mp4(2160, 3840), mp4(1080, 1920), mp4(1920, 1080)], 'portrait');
+  assert.equal(full?.link, 'f_1080x1920');
+  const fallback = pickBestVideoFile([mp4(720, 1280), mp4(1920, 1080)], 'portrait');
+  assert.equal(fallback?.link, 'f_720x1280');
+  assert.equal(pickBestVideoFile([mp4(1920, 1080)], 'portrait'), null);
+});
+
+// --- interleaveRoundRobin --------------------------------------------------------
+
+test('interleaveRoundRobin alternates providers while preserving each ranking', () => {
+  assert.deepEqual(
+    interleaveRoundRobin([
+      ['a1', 'a2', 'a3'],
+      ['b1'],
+      ['c1', 'c2'],
+    ]),
+    ['a1', 'b1', 'c1', 'a2', 'c2', 'a3'],
+  );
+});
+
+test('interleaveRoundRobin handles empty groups and empty input', () => {
+  assert.deepEqual(interleaveRoundRobin([[], ['x'], []]), ['x']);
+  assert.deepEqual(interleaveRoundRobin([]), []);
+});
+
+// --- filterAndRankByRelevance ----------------------------------------------------
+
+const cand = (url: string, meta?: string) => ({ url, source: 'Pexels', meta });
+
+test('filterAndRankByRelevance drops candidates whose metadata shares nothing with the query', () => {
+  const out = filterAndRankByRelevance(
+    [cand('beach', 'ocean waves sunset beach'), cand('cat', 'cat drinking water')],
+    'cat lapping water slow motion',
+  );
+  assert.deepEqual(out.map((c) => c.url), ['cat']);
+});
+
+test('filterAndRankByRelevance keeps candidates without metadata (no evidence either way)', () => {
+  const out = filterAndRankByRelevance(
+    [cand('unknown'), cand('beach', 'ocean waves sunset')],
+    'cat lapping water',
+  );
+  assert.deepEqual(out.map((c) => c.url), ['unknown']);
+});
+
+test('filterAndRankByRelevance floats subject (leading token) matches to the front', () => {
+  const out = filterAndRankByRelevance(
+    [
+      cand('water-only', 'water droplets macro'),
+      cand('no-meta'),
+      cand('subject', 'tabby cat closeup'),
+    ],
+    'cat lapping water',
+  );
+  assert.equal(out[0]!.url, 'subject');
+  // Non-subject keepers retain their original relative order behind it.
+  assert.deepEqual(out.map((c) => c.url), ['subject', 'water-only', 'no-meta']);
+});
+
+test('filterAndRankByRelevance folds simple plurals so "cats" matches "cat"', () => {
+  const out = filterAndRankByRelevance([cand('cats', 'cats playing garden')], 'cat lapping water');
+  assert.deepEqual(out.map((c) => c.url), ['cats']);
+});
+
+test('filterAndRankByRelevance passes everything through when the query has no usable tokens', () => {
+  const all = [cand('a', 'zebra'), cand('b')];
+  assert.deepEqual(filterAndRankByRelevance(all, 'of in'), all);
+});
+
+// --- pexelsSlugText --------------------------------------------------------------
+
+test('pexelsSlugText extracts the descriptive words from a Pexels page URL', () => {
+  assert.equal(
+    pexelsSlugText('https://www.pexels.com/video/a-cat-drinking-water-855282/'),
+    'a cat drinking water',
+  );
+  assert.equal(pexelsSlugText('https://www.pexels.com/video/bee-on-flower-99/'), 'bee on flower');
+});
+
+test('pexelsSlugText returns undefined when there is no usable slug', () => {
+  assert.equal(pexelsSlugText(undefined), undefined);
+  assert.equal(pexelsSlugText('https://www.pexels.com/'), undefined);
+});
+
+test('pexelsSlugText treats untitled (numeric-only) page URLs as no metadata', () => {
+  // Dropping these as "zero overlap" would systematically discard relevant
+  // untitled Pexels clips — the relevance filter must see them as evidence-free.
+  assert.equal(pexelsSlugText('https://www.pexels.com/video/3045163/'), undefined);
+});
+
+// --- pixabayCategoryForSeries ----------------------------------------------------
+
+test('pixabayCategoryForSeries maps all three series; insects share animals', () => {
+  assert.equal(pixabayCategoryForSeries('animals'), 'animals');
+  assert.equal(pixabayCategoryForSeries('insects'), 'animals');
+  assert.equal(pixabayCategoryForSeries('plants'), 'nature');
+  assert.equal(pixabayCategoryForSeries('space'), undefined);
 });

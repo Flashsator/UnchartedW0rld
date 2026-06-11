@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   BGM_VOLUME,
+  BROLL_CLIP_SEC,
   CHANNEL_FOOTER,
   COLD_OPEN_SEC,
   DRY_RUN,
@@ -23,7 +24,14 @@ import {
 } from './config.js';
 import { generateEpisode, generateShortsBlurb, translateMetadata } from './scriptGen.js';
 import { synthesize } from './tts.js';
-import { fetchAmbient, fetchBgm, fetchBroll, fetchBrollForBeats } from './stock.js';
+import {
+  fetchAmbient,
+  fetchBgm,
+  fetchBroll,
+  fetchBrollForBeats,
+  fetchShortsBroll,
+  pixabayCategoryForSeries,
+} from './stock.js';
 import { makeThumbnail } from './thumbnail.js';
 import { renderVideo, renderShorts } from './render.js';
 import { buildChapters, muxAudio, muxShortsAudio, writeSrt } from './mux.js';
@@ -146,6 +154,9 @@ async function main(): Promise<void> {
   });
 
   log('Step 3/8: Fetch b-roll for each section');
+  // Pixabay-only category constraint derived from today's series, so its fuzzy
+  // matcher stays inside the right corner of the library.
+  const pixabayCategory = pixabayCategoryForSeries(series.key);
   const used = new Set<string>();
   // Records which stock libraries actually contributed footage, so the
   // description credits only the sources truly used (not just the ones enabled).
@@ -170,6 +181,7 @@ async function main(): Promise<void> {
       used,
       footageUsed,
       imageCredits,
+      { pixabayCategory },
     );
     broll.push(clips.map((c) => relAsset(runDir, c.path)));
   }
@@ -216,6 +228,7 @@ async function main(): Promise<void> {
       used,
       footageUsed,
       imageCredits,
+      { pixabayCategory },
     );
     interludes.push({
       afterSectionIndex: interludePositions[k]!,
@@ -332,7 +345,7 @@ async function main(): Promise<void> {
 
   if (DRY_RUN) {
     log(`DRY_RUN=1 — skipping YouTube upload. Final: ${finalVideo}`);
-    await runShortsPipeline(manifest, episode, series.categoryId, runDir, today, null, bgmCreditLine);
+    await runShortsPipeline(manifest, episode, series.categoryId, runDir, today, null, bgmCreditLine, used, pixabayCategory);
     return;
   }
 
@@ -380,7 +393,7 @@ async function main(): Promise<void> {
   await addToSeriesPlaylist(videoId, series.name, series.theme);
   await uploadCaption(videoId, path.join(runDir, 'captions.srt'));
 
-  await runShortsPipeline(manifest, episode, series.categoryId, runDir, today, videoId, bgmCreditLine);
+  await runShortsPipeline(manifest, episode, series.categoryId, runDir, today, videoId, bgmCreditLine, used, pixabayCategory);
 
   // End-of-run housekeeping over PAST uploads (each opt-in via its env flag and
   // fully non-fatal): seed one engagement comment under each recently-public
@@ -399,6 +412,8 @@ async function runShortsPipeline(
   today: string,
   longVideoId: string | null,
   musicCredit: string,
+  usedUrls: Set<string>,
+  pixabayCategory?: string,
 ): Promise<void> {
   const utcDay = new Date().getUTCDay();
   const plan = planShortsForToday(utcDay);
@@ -411,8 +426,57 @@ async function runShortsPipeline(
   for (let k = 0; k < plan.length; k++) {
     const entry = plan[k]!;
     log(`Shorts ${k + 1}/${plan.length}: section ${entry.sectionIdx}, publish +${entry.daysAhead}d`);
-    const sm = buildShortsManifest(manifest, episode, entry);
-    if (!sm) continue;
+    const base = buildShortsManifest(manifest, episode, entry);
+    if (!base) continue;
+
+    // Portrait-native footage upgrade: by default a Short reuses the long
+    // section's landscape clips, which the 9:16 renderer center-crops down to
+    // ~1/3 of the frame. Best-effort fetch of true portrait clips for the same
+    // narration beats (a throw here must never kill the remaining Shorts or the
+    // post-upload housekeeping, so any failure just keeps the fallback).
+    const epSection = episode.sections[entry.sectionIdx];
+    const beats = epSection?.visuals?.length
+      ? epSection.visuals
+      : epSection?.visual
+        ? [epSection.visual]
+        : [];
+    let portraitPaths: string[] = [];
+    try {
+      const portrait = await fetchShortsBroll(
+        beats,
+        base.narrationSec,
+        runDir,
+        usedUrls,
+        pixabayCategory,
+      );
+      portraitPaths = portrait.map((c) => relAsset(runDir, c.path));
+    } catch (e) {
+      log(`Shorts ${k + 1}: portrait b-roll fetch failed, keeping landscape — ${(e as Error).message}`);
+    }
+    // Use the portrait clips when at least 2 turned up (a lone clip would make
+    // the Short one static shot), leading the cut list, and top back up with
+    // the landscape fallback clips to the duration-based quota: a short clip
+    // list would stretch each cut slot past the clips' own length, and
+    // OffthreadVideo does not loop — the tail would freeze on the last frame.
+    // Cut times are rebuilt for the final clip count against the
+    // already-trimmed words.
+    const clipQuota = Math.max(1, Math.ceil(base.narrationSec / BROLL_CLIP_SEC));
+    const sm =
+      portraitPaths.length >= 2
+        ? (() => {
+            const brollPaths = [...portraitPaths, ...base.brollPaths].slice(0, clipQuota);
+            return {
+              ...base,
+              brollPaths,
+              cutTimes: computeCutTimes(base.words, base.narrationSec, brollPaths.length),
+            };
+          })()
+        : base;
+    if (portraitPaths.length >= 2) {
+      log(
+        `Shorts ${k + 1}: portrait-native b-roll (${portraitPaths.length} portrait, ${sm.brollPaths.length} total clips)`,
+      );
+    }
     fs.writeFileSync(path.join(runDir, `shorts_${k}.json`), JSON.stringify(sm, null, 2));
 
     const silentShort = path.join(runDir, `shorts_${k}_silent.mp4`);

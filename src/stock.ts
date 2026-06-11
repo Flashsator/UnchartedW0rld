@@ -93,6 +93,8 @@ function eligibleTracks(): string[] {
 type PexelsVideo = {
   width: number;
   height: number;
+  url?: string;
+  duration?: number;
   video_files: Array<{
     link: string;
     width: number;
@@ -105,6 +107,8 @@ type PexelsVideo = {
 type PexelsResp = { videos: PexelsVideo[] };
 
 type PixabayVideo = {
+  tags?: string;
+  duration?: number;
   videos: {
     large?: { url: string; width: number; height: number };
     medium?: { url: string; width: number; height: number };
@@ -114,6 +118,8 @@ type PixabayVideo = {
 type PixabayResp = { hits: PixabayVideo[] };
 
 type CoverrVideo = {
+  title?: string;
+  duration?: number;
   max_width?: number;
   max_height?: number;
   aspect_ratio?: string;
@@ -126,41 +132,218 @@ type CoverrVideo = {
 
 type CoverrResp = { hits: CoverrVideo[] };
 
-async function searchPexels(query: string): Promise<string[]> {
+export type BrollOrientation = 'landscape' | 'portrait';
+
+// Knobs the b-roll fetchers thread down to the provider searchers.
+export type BrollFetchOpts = {
+  // Portrait mode exists for Shorts-native footage; landscape is the default
+  // long-form path.
+  orientation?: BrollOrientation;
+  // Pixabay search category (e.g. 'animals', 'nature'). Constrains Pixabay's
+  // fuzzy matcher to the right corner of its library so a thin query degrades
+  // to on-theme footage instead of arbitrary scenery.
+  pixabayCategory?: string;
+};
+
+// One downloadable search result, normalized across providers.
+export type StockCandidate = {
+  url: string;
+  source: string;
+  // Provider-supplied descriptive text for THIS clip (Pixabay tags, the Pexels
+  // page slug, a Coverr title) used for relevance checking. Absent when the
+  // provider exposes nothing per-clip.
+  meta?: string;
+  // Provider-reported clip length in seconds, when exposed.
+  duration?: number;
+};
+
+// The Shorts frame is 9:16 at 1080 wide, so a portrait clip needs ~1920px of
+// height to fill it 1:1. 1280 (720x1280) is the lowest accepted fallback —
+// still sharper than center-cropping a 1080p landscape clip, which leaves only
+// ~607px of usable width.
+const PORTRAIT_MIN_HEIGHT = 1920;
+const PORTRAIT_FALLBACK_MIN_HEIGHT = 1280;
+const LANDSCAPE_FALLBACK_MIN_HEIGHT = 720;
+
+export type StockVideoFile = {
+  link: string;
+  width: number;
+  height: number;
+  file_type: string;
+};
+
+// Picks which rendition of one clip to download. The orientation must actually
+// match (the old code's first-choice condition was inverted — `height >= width`
+// selected PORTRAIT files on a landscape search, so the 720p fallback always
+// won and every Pexels download was 720p in a 1080p render). Among renditions
+// meeting the quality floor the SMALLEST is taken: the render output caps the
+// useful resolution, a 4K master only costs download time and CI disk. Below
+// the floor, the largest available is the least-bad fallback. Pure and
+// exported for testing.
+export function pickBestVideoFile(
+  files: StockVideoFile[],
+  orientation: BrollOrientation = 'landscape',
+): StockVideoFile | null {
+  const fitsOrientation =
+    orientation === 'portrait'
+      ? (f: StockVideoFile) => f.height > f.width
+      : (f: StockVideoFile) => f.width >= f.height;
+  const floor = orientation === 'portrait' ? PORTRAIT_MIN_HEIGHT : BROLL_MIN_HEIGHT;
+  const fallbackFloor =
+    orientation === 'portrait' ? PORTRAIT_FALLBACK_MIN_HEIGHT : LANDSCAPE_FALLBACK_MIN_HEIGHT;
+  const oriented = files.filter((f) => f.file_type === 'video/mp4' && fitsOrientation(f));
+  const atFloor = oriented.filter((f) => f.height >= floor);
+  if (atFloor.length > 0) {
+    return atFloor.reduce((best, f) => (f.height < best.height ? f : best));
+  }
+  const fallback = oriented.filter((f) => f.height >= fallbackFloor);
+  if (fallback.length > 0) {
+    return fallback.reduce((best, f) => (f.height > best.height ? f : best));
+  }
+  return null;
+}
+
+// A Pexels video's page URL ends in a human-written slug naming the clip
+// (".../video/a-cat-drinking-water-855282/") — the only per-clip description
+// the API exposes. Turned into plain words for relevance matching. Pure and
+// exported for testing.
+export function pexelsSlugText(pageUrl: string | undefined): string | undefined {
+  if (!pageUrl) return undefined;
+  const m = pageUrl.match(/\/video\/([a-z0-9-]+?)(?:-\d+)?\/?$/i);
+  if (!m) return undefined;
+  const text = m[1]!.replace(/-/g, ' ').trim();
+  // Untitled Pexels videos have numeric-only page URLs (".../video/3045163/").
+  // That's NOT descriptive metadata — returning it would make the relevance
+  // filter drop a perfectly good candidate for "zero token overlap".
+  if (!/[a-z]/i.test(text)) return undefined;
+  return text || undefined;
+}
+
+// Light singular/plural folding so 'cats' matches 'cat' without an NLP
+// dependency; tokens under 3 chars are noise ('in', 'of') and dropped.
+function relevanceTokens(text: string): string[] {
+  return text
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 3)
+    .map((t) => (t.length > 3 && t.endsWith('s') ? t.slice(0, -1) : t));
+}
+
+// Drops candidates whose own metadata provably mismatches the query, and floats
+// subject matches to the front. Providers fuzzy-match a thin query into
+// whatever they have (the narration/visual drift viewers notice), and per-clip
+// metadata is the only signal that exposes it: a candidate WITH metadata
+// sharing zero tokens with the query is dropped; candidates without metadata
+// are kept — absence of evidence isn't a mismatch. Candidates whose metadata
+// names the query's LEADING token (the subject noun, per anchorVisual) move
+// ahead of the rest; original order is otherwise preserved. Pure and exported
+// for testing.
+export function filterAndRankByRelevance(
+  candidates: StockCandidate[],
+  query: string,
+): StockCandidate[] {
+  const queryTokens = relevanceTokens(query);
+  if (queryTokens.length === 0) return candidates;
+  const subject = queryTokens[0]!;
+  const kept = candidates
+    .map((c) => {
+      if (!c.meta) return { c, overlap: -1, hasSubject: false };
+      const metaTokens = new Set(relevanceTokens(c.meta));
+      const overlap = queryTokens.reduce((a, t) => a + (metaTokens.has(t) ? 1 : 0), 0);
+      return { c, overlap, hasSubject: metaTokens.has(subject) };
+    })
+    .filter((s) => s.overlap !== 0);
+  return [
+    ...kept.filter((s) => s.hasSubject).map((s) => s.c),
+    ...kept.filter((s) => !s.hasSubject).map((s) => s.c),
+  ];
+}
+
+// Round-robin merge that preserves each provider's own result order — their
+// ranking IS relevance signal. (The old full-pool shuffle made a provider's
+// 15th-best result as likely to download first as anyone's best match.) Pure
+// and exported for testing.
+export function interleaveRoundRobin<T>(groups: T[][]): T[] {
+  const out: T[] = [];
+  const longest = groups.reduce((m, g) => Math.max(m, g.length), 0);
+  for (let i = 0; i < longest; i++) {
+    for (const g of groups) {
+      const item = g[i];
+      if (item !== undefined) out.push(item);
+    }
+  }
+  return out;
+}
+
+// Pixabay categories matching the channel's three series. No 'insects'
+// category exists — 'animals' is the closest superset. Unknown keys return
+// undefined (no category constraint). Pure and exported for testing.
+const PIXABAY_SERIES_CATEGORY: Record<string, string> = {
+  animals: 'animals',
+  insects: 'animals',
+  plants: 'nature',
+};
+
+export function pixabayCategoryForSeries(seriesKey: string): string | undefined {
+  return PIXABAY_SERIES_CATEGORY[seriesKey];
+}
+
+async function searchPexels(
+  query: string,
+  orientation: BrollOrientation = 'landscape',
+): Promise<StockCandidate[]> {
   if (!PEXELS_API_KEY) return [];
-  const url = `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=15&orientation=landscape`;
+  const url = `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=15&orientation=${orientation}`;
   try {
     const data = await fetchJson<PexelsResp>(url, {
       headers: { Authorization: PEXELS_API_KEY },
     });
-    const links: string[] = [];
+    const out: StockCandidate[] = [];
     for (const v of data.videos) {
-      const file = v.video_files.find(
-        (f) =>
-          f.file_type === 'video/mp4' &&
-          f.height >= BROLL_MIN_HEIGHT &&
-          f.height >= f.width,
-      ) || v.video_files.find((f) => f.file_type === 'video/mp4' && f.height >= 720);
-      if (file) links.push(file.link);
+      const file = pickBestVideoFile(v.video_files, orientation);
+      if (!file) continue;
+      out.push({
+        url: file.link,
+        source: 'Pexels',
+        meta: pexelsSlugText(v.url),
+        duration: v.duration,
+      });
     }
-    return links;
+    return out;
   } catch (e) {
     log(`Pexels search failed: ${(e as Error).message}`);
     return [];
   }
 }
 
-async function searchPixabay(query: string): Promise<string[]> {
+async function searchPixabay(
+  query: string,
+  orientation: BrollOrientation = 'landscape',
+  category?: string,
+): Promise<StockCandidate[]> {
   if (!PIXABAY_API_KEY) return [];
-  const url = `https://pixabay.com/api/videos/?key=${PIXABAY_API_KEY}&q=${encodeURIComponent(query)}&per_page=15&safesearch=true`;
+  // video_type=film keeps out animations/motion-graphics renders, which read
+  // as off-brand filler between real wildlife footage.
+  const url =
+    `https://pixabay.com/api/videos/?key=${PIXABAY_API_KEY}&q=${encodeURIComponent(query)}` +
+    `&per_page=15&safesearch=true&video_type=film` +
+    (category ? `&category=${encodeURIComponent(category)}` : '');
   try {
     const data = await fetchJson<PixabayResp>(url);
-    const links: string[] = [];
+    const out: StockCandidate[] = [];
     for (const v of data.hits) {
       const f = v.videos.large ?? v.videos.medium;
-      if (f) links.push(f.url);
+      if (!f) continue;
+      // Pixabay has no orientation parameter, so orientation is enforced from
+      // the rendition's own reported dimensions instead.
+      if (orientation === 'portrait') {
+        if (!(f.height > f.width && f.height >= PORTRAIT_FALLBACK_MIN_HEIGHT)) continue;
+      } else if (f.height > f.width) {
+        continue;
+      }
+      out.push({ url: f.url, source: 'Pixabay', meta: v.tags, duration: v.duration });
     }
-    return links;
+    return out;
   } catch (e) {
     log(`Pixabay search failed: ${(e as Error).message}`);
     return [];
@@ -170,15 +353,19 @@ async function searchPixabay(query: string): Promise<string[]> {
 // Coverr is a free, commercial-use cinematic stock-video library. We request
 // landscape clips at least BROLL_MIN_HEIGHT tall (Coverr reports max_width/
 // max_height per clip) and return their direct mp4 URLs, same contract as the
-// Pexels/Pixabay searchers.
-async function searchCoverr(query: string): Promise<string[]> {
-  if (!COVERR_API_KEY) return [];
+// Pexels/Pixabay searchers. Coverr's catalog is essentially all landscape, so
+// portrait searches skip it entirely.
+async function searchCoverr(
+  query: string,
+  orientation: BrollOrientation = 'landscape',
+): Promise<StockCandidate[]> {
+  if (!COVERR_API_KEY || orientation === 'portrait') return [];
   const url =
     `https://api.coverr.co/videos?query=${encodeURIComponent(query)}` +
     `&page_size=15&urls=true&api_key=${COVERR_API_KEY}`;
   try {
     const data = await fetchJson<CoverrResp>(url);
-    const links: string[] = [];
+    const out: StockCandidate[] = [];
     for (const v of data.hits) {
       const link = v.urls?.mp4 ?? v.urls?.mp4_download;
       if (!link) continue;
@@ -186,9 +373,9 @@ async function searchCoverr(query: string): Promise<string[]> {
       // reports dimensions; accept when it doesn't (most Coverr clips are 1080p+).
       if (v.max_height && v.max_height < BROLL_MIN_HEIGHT) continue;
       if (v.max_width && v.max_height && v.max_height > v.max_width) continue;
-      links.push(link);
+      out.push({ url: link, source: 'Coverr', meta: v.title, duration: v.duration });
     }
-    return links;
+    return out;
   } catch (e) {
     log(`Coverr search failed: ${(e as Error).message}`);
     return [];
@@ -435,21 +622,31 @@ async function downloadVideoClips(
   usedUrls: Set<string>,
   sourcesUsed: Set<string> | undefined,
   clips: BrollClip[],
+  opts: BrollFetchOpts = {},
 ): Promise<void> {
   if (remaining <= 0) return;
+  const orientation = opts.orientation ?? 'landscape';
   const [pexels, pixabay, coverr] = await Promise.all([
-    searchPexels(query),
-    searchPixabay(query),
-    searchCoverr(query),
+    searchPexels(query, orientation),
+    searchPixabay(query, orientation, opts.pixabayCategory),
+    searchCoverr(query, orientation),
   ]);
-  // Tag each candidate with its provider so we can record exactly which
-  // libraries actually contributed footage to this video (for attribution).
-  const tagged = [
-    ...pexels.map((url) => ({ url, source: 'Pexels' })),
-    ...pixabay.map((url) => ({ url, source: 'Pixabay' })),
-    ...coverr.map((url) => ({ url, source: 'Coverr' })),
-  ];
-  const pool = shuffle(tagged).filter((c) => !usedUrls.has(c.url));
+  // Per provider: drop candidates whose own metadata mismatches the query and
+  // keep each provider's relevance ranking; then round-robin across providers
+  // (in a shuffled provider order so no single library always leads).
+  // Candidates the provider reports as shorter than one cut slot go to the
+  // back of the line — usable, but only after every full-length option.
+  const groups = shuffle(
+    [pexels, pixabay, coverr].map((g) => filterAndRankByRelevance(g, query)),
+  );
+  const merged = interleaveRoundRobin(groups).filter((c) => !usedUrls.has(c.url));
+  const fullLength = merged.filter(
+    (c) => c.duration === undefined || c.duration >= BROLL_CLIP_SEC,
+  );
+  const tooShort = merged.filter(
+    (c) => c.duration !== undefined && c.duration < BROLL_CLIP_SEC,
+  );
+  const pool = [...fullLength, ...tooShort];
   let added = 0;
   for (const { url, source } of pool) {
     if (added >= remaining) break;
@@ -464,7 +661,12 @@ async function downloadVideoClips(
       }
       usedUrls.add(url);
       sourcesUsed?.add(source);
-      clips.push({ path: dest, duration: dur, width: 1920, height: 1080 });
+      clips.push({
+        path: dest,
+        duration: dur,
+        width: orientation === 'portrait' ? 1080 : 1920,
+        height: orientation === 'portrait' ? 1920 : 1080,
+      });
       added++;
     } catch (e) {
       log(`Broll download failed: ${(e as Error).message}`);
@@ -487,6 +689,7 @@ async function fetchClipsForQuery(
   usedUrls: Set<string>,
   sourcesUsed?: Set<string>,
   commonsCredits?: ImageCredit[],
+  opts: BrollFetchOpts = {},
 ): Promise<BrollClip[]> {
   if (count <= 0) return [];
 
@@ -504,8 +707,14 @@ async function fetchClipsForQuery(
       usedUrls,
       sourcesUsed,
       clips,
+      opts,
     );
   }
+
+  // The still-photo gap-fills below render Ken Burns clips at the 16:9 project
+  // resolution, which would defeat the point of a portrait fetch — portrait
+  // callers have the long section's landscape clips as their fallback instead.
+  if (opts.orientation === 'portrait') return clips;
 
   // Still short after the video providers? Fill the remaining slots with Ken
   // Burns stills. Wikimedia Commons goes FIRST because it title-matches the
@@ -570,6 +779,7 @@ export async function fetchBroll(
   usedUrls: Set<string>,
   sourcesUsed?: Set<string>,
   commonsCredits?: ImageCredit[],
+  opts: BrollFetchOpts = {},
 ): Promise<BrollClip[]> {
   const cacheDir = ensureDir(path.join(workDir, 'broll'));
   const needed = Math.max(1, Math.ceil(sectionDuration / BROLL_CLIP_SEC));
@@ -580,6 +790,7 @@ export async function fetchBroll(
     usedUrls,
     sourcesUsed,
     commonsCredits,
+    opts,
   );
   if (clips.length === 0) {
     throw new Error(
@@ -602,6 +813,7 @@ export async function fetchBrollForBeats(
   usedUrls: Set<string>,
   sourcesUsed?: Set<string>,
   commonsCredits?: ImageCredit[],
+  opts: BrollFetchOpts = {},
 ): Promise<BrollClip[]> {
   const cacheDir = ensureDir(path.join(workDir, 'broll'));
   const queries = beats.map((b) => b.trim()).filter(Boolean);
@@ -621,6 +833,7 @@ export async function fetchBrollForBeats(
       usedUrls,
       sourcesUsed,
       commonsCredits,
+      opts,
     );
     clips.push(...got);
   }
@@ -635,6 +848,7 @@ export async function fetchBrollForBeats(
       usedUrls,
       sourcesUsed,
       commonsCredits,
+      opts,
     );
     clips.push(...got);
   }
@@ -643,6 +857,53 @@ export async function fetchBrollForBeats(
     throw new Error(
       `No b-roll for any beat of [${queries.join(' | ')}] — check stock API keys`,
     );
+  }
+  return clips;
+}
+
+// Portrait-native b-roll for one Short (#6). Best-effort BY DESIGN: every
+// Short already has the long section's landscape clips (center-cropped by the
+// renderer) as a working fallback, so this returns whatever portrait footage
+// it found — possibly [] — instead of throwing. Beats are queried in narration
+// order; later beats may get nothing when the trimmed Short doesn't need them.
+export async function fetchShortsBroll(
+  beats: string[],
+  narrationSec: number,
+  workDir: string,
+  usedUrls: Set<string>,
+  pixabayCategory?: string,
+): Promise<BrollClip[]> {
+  const cacheDir = ensureDir(path.join(workDir, 'broll'));
+  const queries = beats.map((b) => b.trim()).filter(Boolean);
+  if (queries.length === 0) return [];
+  const opts: BrollFetchOpts = { orientation: 'portrait', pixabayCategory };
+  const needed = Math.max(1, Math.ceil(narrationSec / BROLL_CLIP_SEC));
+  const allocation = allocateClipsAcrossBeats(needed, queries.length);
+
+  const clips: BrollClip[] = [];
+  for (let i = 0; i < queries.length; i++) {
+    const got = await fetchClipsForQuery(
+      queries[i]!,
+      allocation[i]!,
+      cacheDir,
+      usedUrls,
+      undefined,
+      undefined,
+      opts,
+    );
+    clips.push(...got);
+  }
+  for (let i = 0; i < queries.length && clips.length < needed; i++) {
+    const got = await fetchClipsForQuery(
+      queries[i]!,
+      needed - clips.length,
+      cacheDir,
+      usedUrls,
+      undefined,
+      undefined,
+      opts,
+    );
+    clips.push(...got);
   }
   return clips;
 }
