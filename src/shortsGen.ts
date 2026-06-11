@@ -141,7 +141,7 @@ function compactHook(text: string): string {
 
 export function buildShortsManifest(
   long: RenderManifest,
-  _longEpisode: Episode,
+  longEpisode: Episode,
   entry: ShortsPlanEntry,
 ): ShortsManifest | null {
   const section = long.sections[entry.sectionIdx];
@@ -160,7 +160,12 @@ export function buildShortsManifest(
     narrationSec,
   );
 
-  const hookText = entry.sectionIdx === 0 ? long.hook : section.heading;
+  // Title/card text: the teaser (section 0) reuses the episode's cold-open hook;
+  // off-day sections prefer the script's purpose-written shortsHook — the heading
+  // is a chapter label, not a hook — and fall back to it on older episodes.
+  const epSection = longEpisode.sections[entry.sectionIdx];
+  const hookText =
+    entry.sectionIdx === 0 ? long.hook : epSection?.shortsHook?.trim() || section.heading;
   // No "#Shorts" in the title — YouTube classifies Shorts by vertical ratio +
   // duration, not the hashtag, so it only wastes title space that should be a
   // pure curiosity hook. (Description still carries hashtags.)

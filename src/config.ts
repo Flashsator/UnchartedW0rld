@@ -472,7 +472,7 @@ export const STRUCTURE_POOL: Structure[] = [
       'HOOK + PROMISE TAIL. Hint that something has been hidden, but do NOT spoil the flip yet.',
       'SETUP A. Introduce the conventional, "obvious" version of the subject. Treat it as if it is the whole truth.',
       'SETUP B. Deepen the conventional understanding with specific details that will become load-bearing for the flip.',
-      'THE PIVOT. A single conceptual reversal. Open with a line like "Except that is not what is happening." Identify exactly which load-bearing detail breaks.',
+      'THE PIVOT. A single conceptual reversal. Open with a reversal line that NAMES the subject so it stands alone, e.g. "Except that is not what the octopus is actually doing." Identify exactly which load-bearing detail breaks.',
       'REFRAME A. Re-walk the subject under the new framing. Cite the evidence the old story ignored.',
       'REFRAME B. Explain why the old framing survived this long. Name what no one talks about.',
       'CLOSING IMPLICATION. ONE reflective line that lingers. Not a recap. Not a CTA. The viewer should feel they cannot un-know this.',

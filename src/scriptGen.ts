@@ -128,11 +128,12 @@ Shape:
   "thumbnailWord": "string, ONE punchy uppercase word (3-8 letters) for the thumbnail caption — the single idea a viewer should feel. e.g., 'LISTEN', 'BURIED', 'WRONG'. Must NOT be a structural word like CASE/FILE/PROFILE, and must NOT repeat a word already in the title — it complements the title, it does not echo it.",
   "sections": [
     {
-      "heading": "string, 3-6 words, what this beat is about",
+      "heading": "string, 3-6 words, what this beat is about — framed as a TEASE. Headings become the video's clickable chapter list, so a heading must name the mystery, never the solution: a viewer scanning the chapters must not be able to extract the episode's payoff. Good: 'The Blue Crystals on Its Back'. Bad: 'It Explodes Itself to Kill Ants'.",
       "narration": "string, ${wordsLo}-${wordsHi} words, ${structure.label} tone, no stage directions, no 'in this video', read aloud as natural English",
       "visual": "string, 6-12 words — a SINGLE summary b-roll query for this whole section (subject + the section's main scene). Used as the cold-open shot and a fallback. MUST start with the episode \"subject\". e.g. subject 'cave spider' -> 'cave spider crawling on wet rock in dark cave'. NEVER an abstract or tangential query that drops the subject (no bare 'old library', 'laboratory', 'starry sky', 'flowing data').",
       "visuals": ["3-6 strings, ORDERED to match this section's narration beat by beat. Split the narration into its successive moments and write ONE 6-12 word b-roll stock query per moment, in the SAME order they are spoken, so the footage shows what is being said as it is said. Each MUST start with the episode \"subject\", then that moment's scene/action/setting. e.g. narration goes rest -> feed -> attack, so visuals = ['cave spider resting in a dark rock crevice','cave spider wrapping a moth in silk','cave spider lunging at prey in the dark']. Cover the whole section in order; never drop the subject; no abstract or tangential shots."],
-      "overlays": "optional array, 0-2 items, ONLY for sections 2, 3, 4, 5 — see Overlay Rules below"
+      "overlays": "optional array, 0-2 items, ONLY for sections 2, 3, 4, 5 — see Overlay Rules below",
+      "shortsHook": "ONLY for sections 3 and 5 (omit the key everywhere else): string, 8-14 words — a standalone curiosity hook used as the TITLE of the Short cut from this section. It must name the subject by its common name, make a complete hooky claim a viewer with ZERO context understands instantly, and must NOT spoil this section's payoff or repeat the episode title. No clickbait lies: the claim must be real and actually delivered in THIS section's narration — never invent a number or fact for the hook."
     }
   ]
 }
@@ -202,7 +203,15 @@ Pacing rules (every section):
 - Every section except the last ends on a hook into the next: an unresolved detail, a "but here is where it stops making sense", an unanswered question that the next section will pick up.
 - Every section except section 0 OPENS by advancing the thread, not recapping: drop straight into the next concrete beat (or land the answer the prior section withheld) within the first sentence. Never summarize what was just said — a recap is where viewers leave.
 - Do NOT do mini-twists in every section. Follow the structural template above — the reversal / discovery / deepest layer happens at the section the template says, not earlier.
-- Section 1 introduces the specific subject by name without explaining everything.`;
+- PAYOFF CALLBACK: at the single section where this template lands its reveal, close the loop the cold open promised — one short sentence that points back at the section-0 promise (the question the viewer clicked for) right before paying it off. Exactly ONE callback, at the reveal only; never sprinkle recap callbacks across other sections. If the reveal section is 3 or 5 (a Shorts cut), phrase the callback context-free: restate the promise as a fresh claim, never "the question we opened with" / "at the start of this video".
+- Section 1 introduces the specific subject by name without explaining everything.
+
+Shorts cut rule (CRITICAL — sections 3 and 5 only):
+- Sections 3 and 5 are republished VERBATIM as standalone Shorts, shown cold to viewers who have NOT seen any other part of the episode.
+- Their FIRST sentence must stand alone for that cold viewer: name the subject by its common name and make one complete, hooky claim that needs zero prior context — while still advancing the long-form thread for the mid-episode viewer (a sharp restatement of exactly where the thread stands doubles as a cold open).
+- Never open section 3 or 5 with a bare pronoun standing in for the subject, a callback phrase ("remember", "as we saw", "that same..."), or an unexplained term that was only introduced in an earlier section.
+- If a section role above prescribes an opening line for section 3 or 5, rewrite that line so it names the subject and stands alone — the cold-open requirement wins.
+- Give sections 3 and 5 — and ONLY them — the "shortsHook" field described in the Shape.`;
 }
 
 export async function generateEpisode(
@@ -481,6 +490,12 @@ function normalizeEpisode(ep: Episode, series: Series, subTheme: string): Episod
       ...sec,
       visual: anchorVisual(sec.visual, subject),
       visuals: sanitizeVisuals(sec.visuals, sec.visual, subject),
+      // Model JSON is an unchecked cast — a non-string shortsHook would throw
+      // at the Shorts consumer, so normalize it to a trimmed string or drop it.
+      shortsHook:
+        typeof sec.shortsHook === 'string' && sec.shortsHook.trim()
+          ? sec.shortsHook.trim()
+          : undefined,
     };
     if (!OVERLAY_ALLOWED_SECTIONS.has(i)) {
       const { overlays: _unused, ...rest } = base;

@@ -191,7 +191,12 @@ silently resets every run.
   staggered to `PUBLISH_HOUR_UTC + 2` ≈ 21:00 UTC so it funnels into the
   just-dropped long video) **plus** later-section shorts dripped onto the
   off-days, so every weekday gets one and no two reuse a section: Mon/Wed → 2
-  shorts (same-day + next-day), Fri → 3 (same-day + Sat + Sun).
+  shorts (same-day + next-day), Fri → 3 (same-day + Sat + Sun). Because sections
+  3/5 ship verbatim as those off-day Shorts, the script prompt requires their
+  FIRST sentence to stand alone for a cold viewer (name the subject, zero-context
+  claim) and adds a per-section `shortsHook` field (8-14 word standalone hook)
+  that `buildShortsManifest` prefers over the chapter-label heading for the
+  Short's title/card — heading stays the fallback on older episodes.
 - **Shorts → long-video funnel:** the only *automated* link from a Short to its
   long video is the `▶ Full video:` URL line in the Short's description
   (`shortsDescription` in `src/youtube.ts`). YouTube's native **Related-video
