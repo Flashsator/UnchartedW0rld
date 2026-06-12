@@ -10,6 +10,7 @@ import {
   type Series,
   type ThumbLayout,
 } from './config.js';
+import { runClaudeCli } from './scriptGen.js';
 import { searchUnsplash } from './stock.js';
 import { downloadFile, ensureDir, log } from './utils.js';
 
@@ -373,6 +374,42 @@ async function fetchFluxBackground(prompt: string, bgPath: string): Promise<bool
   }
 }
 
+// Vision QA on the generated background. Diffusion output occasionally ships a
+// credibility-killing defect a science channel can't afford on its cover — a
+// bee with four legs, a fused/duplicated body part, the subject unrecognizable,
+// or hallucinated text. The script-gen Claude CLI can read images, so ask it
+// for a strict one-word verdict and regenerate on FAIL. Best-effort by design:
+// any infra error (CLI missing locally, timeout, weird output) counts as PASS —
+// QA must never block a thumbnail the old pipeline would have shipped.
+//
+// FAIL conditions are deliberately narrow (clear defects only) so an overly
+// picky model can't starve us into the weaker Unsplash fallback.
+const VISION_QA_TIMEOUT_MS = 3 * 60 * 1000;
+
+async function passesVisionCheck(bgPath: string, subject: string): Promise<boolean> {
+  const prompt = `You are a thumbnail quality checker for a science documentary YouTube channel.
+Read the image file at: ${path.resolve(bgPath)}
+It is meant to be a thumbnail background depicting: ${subject}.
+Reply FAIL only if at least one of these is CLEARLY true:
+- the main subject is unrecognizable or obviously not "${subject}"
+- a visible creature has an obvious anatomical error (wrong number of legs, limbs, wings or eyes; fused, duplicated or missing body parts)
+- the image contains rendered text, letters, captions or a watermark
+Otherwise reply PASS. Stylization, blur, dramatic lighting and partial occlusion are all fine.
+Reply with exactly one word: PASS or FAIL.`;
+  try {
+    const out = await runClaudeCli(prompt, {
+      extraArgs: ['--allowedTools', 'Read'],
+      timeoutMs: VISION_QA_TIMEOUT_MS,
+    });
+    const failed = /\bFAIL\b/i.test(out);
+    log(`Thumbnail: vision QA verdict: ${failed ? 'FAIL' : 'PASS'} (${out.trim().slice(0, 80)})`);
+    return !failed;
+  } catch (e) {
+    log(`Thumbnail: vision QA unavailable, accepting image (${(e as Error).message})`);
+    return true;
+  }
+}
+
 // Stock-photo fallback for the thumbnail background: when FLUX generation is
 // unavailable (no credentials, quota exhausted, or API error), pull a real,
 // on-topic landscape photo from Unsplash so the cover is never just a flat
@@ -435,13 +472,30 @@ export async function makeThumbnail(
   const prompt = `${subject}, clear recognizable real-world subject, ${framing}, ${safeStyle}, photorealistic, sharp focus on the main subject, dramatic lighting, depth of field, 16:9, editorial documentary, vibrant colors, not abstract, no extreme macro close-up, no text, no letters, no words, no captions, no watermark, no logo, no gore, no blood`;
 
   log(`Thumbnail: requesting background image (layout: ${layout})...`);
-  // Primary: Cloudflare FLUX.2 [klein] 9B. Fall back to a real on-topic Unsplash
-  // photo before giving up on an image entirely — a flat gradient cover reads as
-  // "broken/empty".
-  let haveBg = await fetchFluxBackground(softenForModeration(prompt), bgPath);
+  // Primary: Cloudflare FLUX.2 [klein] 9B, vision-QA'd with one regeneration on
+  // a clear defect. If both attempts fail QA, prefer a real on-topic Unsplash
+  // photo (a real photo can't have AI anatomy errors); if Unsplash is also
+  // unavailable, keep the rejected FLUX image rather than shipping a flat
+  // gradient cover that reads as "broken/empty".
+  const FLUX_QA_ATTEMPTS = 2;
+  let haveBg = false;
+  let fluxBgOnDisk = false;
+  for (let attempt = 1; attempt <= FLUX_QA_ATTEMPTS && !haveBg; attempt++) {
+    // FLUX returning false means unavailable/erroring — retrying won't help.
+    if (!(await fetchFluxBackground(softenForModeration(prompt), bgPath))) break;
+    fluxBgOnDisk = true;
+    haveBg = await passesVisionCheck(bgPath, subject);
+    if (!haveBg) log(`Thumbnail: vision QA rejected FLUX image (attempt ${attempt}/${FLUX_QA_ATTEMPTS})`);
+  }
   if (!haveBg) {
-    log('Thumbnail: FLUX unavailable; falling back to Unsplash');
+    log('Thumbnail: FLUX unavailable or failed QA; falling back to Unsplash');
     haveBg = await fetchUnsplashBackground(subject, bgPath);
+    if (!haveBg && fluxBgOnDisk) {
+      // Unsplash overwrites bgPath only on success, so the last FLUX image is
+      // still there — an imperfect image beats an empty gradient.
+      log('Thumbnail: Unsplash unavailable; keeping QA-rejected FLUX image');
+      haveBg = true;
+    }
   }
   if (!haveBg) {
     log('Thumbnail: no image source available, using gradient fallback');

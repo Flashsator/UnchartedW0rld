@@ -555,11 +555,20 @@ const SCRIPT_GEN_ATTEMPTS = 2;
 //   - 'claude-sonnet-4-6'  → faster, cheaper, plenty for documentary scripts
 const CLAUDE_MODEL = 'claude-opus-4-8';
 
-// Exported so sibling modules (topicResearch, ctrRescue) can reuse the same
-// headless-CLI plumbing (timeout, heartbeat, model pin) instead of duplicating it.
-export function runClaudeCli(prompt: string): Promise<string> {
+// Exported so sibling modules (topicResearch, ctrRescue, thumbnail) can reuse
+// the same headless-CLI plumbing (timeout, heartbeat, model pin) instead of
+// duplicating it. `extraArgs` lets a caller pre-authorize tools (e.g.
+// `--allowedTools Read` for the thumbnail vision check — headless mode can't
+// answer permission prompts, so tools must be allowed up front). `timeoutMs`
+// lets short QA-style calls fail fast instead of inheriting the 20-min cap
+// sized for full script generation.
+export function runClaudeCli(
+  prompt: string,
+  opts: { extraArgs?: readonly string[]; timeoutMs?: number } = {},
+): Promise<string> {
+  const timeoutMs = opts.timeoutMs ?? CLAUDE_CLI_TIMEOUT_MS;
   return new Promise((resolve, reject) => {
-    const args = ['-p', '--output-format', 'text', '--model', CLAUDE_MODEL];
+    const args = ['-p', '--output-format', 'text', '--model', CLAUDE_MODEL, ...(opts.extraArgs ?? [])];
     const proc = spawn('claude', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: process.platform === 'win32',
@@ -587,12 +596,12 @@ export function runClaudeCli(prompt: string): Promise<string> {
       finish(() =>
         reject(
           new Error(
-            `claude CLI timed out after ${CLAUDE_CLI_TIMEOUT_MS / 1000}s. ` +
+            `claude CLI timed out after ${timeoutMs / 1000}s. ` +
               `stderr: ${stderr.slice(-1000) || '(empty)'} | stdout: ${stdout.slice(-500) || '(empty)'}`,
           ),
         ),
       );
-    }, CLAUDE_CLI_TIMEOUT_MS);
+    }, timeoutMs);
     proc.stdout.on('data', (c: Buffer) => {
       stdout += c.toString('utf-8');
     });
