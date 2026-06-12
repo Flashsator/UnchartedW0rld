@@ -418,10 +418,21 @@ export async function makeThumbnail(
     .replace(/,?\s*micro-detail biology/gi, '')
     .replace(/,?\s*micro-detail/gi, '');
   const subject = conceptOverride?.trim() || titleToSubject(title);
+  // Diffusion models reliably miscount arthropod legs — a bee rendered with 4
+  // legs (or a spider with 6) undermines a science channel's credibility. For
+  // the insect series, steer the composition toward a head-on three-quarter
+  // portrait with legs tucked under the body or partly occluded by a flower or
+  // leaf, so the full leg array is never splayed out and countable, plus a
+  // count-AGNOSTIC anatomy hint (the series also covers arachnids, so never
+  // hardcode "six legs"). Other series keep the standard medium-shot framing.
+  const framing =
+    series.key === 'insects'
+      ? 'head-on three-quarter portrait, legs tucked under the body or partly hidden behind a flower or leaf, anatomically correct, accurate leg anatomy'
+      : 'cinematic medium shot';
   // Lead with the episode subject so the image actually depicts this topic, but
   // force a recognizable real-world composition: viewers must instantly read
   // WHAT it is. Extreme macro / abstract textures look like nothing.
-  const prompt = `${subject}, clear recognizable real-world subject, cinematic medium shot, ${safeStyle}, photorealistic, sharp focus on the main subject, dramatic lighting, depth of field, 16:9, editorial documentary, vibrant colors, not abstract, no extreme macro close-up, no text, no letters, no words, no captions, no watermark, no logo, no gore, no blood`;
+  const prompt = `${subject}, clear recognizable real-world subject, ${framing}, ${safeStyle}, photorealistic, sharp focus on the main subject, dramatic lighting, depth of field, 16:9, editorial documentary, vibrant colors, not abstract, no extreme macro close-up, no text, no letters, no words, no captions, no watermark, no logo, no gore, no blood`;
 
   log(`Thumbnail: requesting background image (layout: ${layout})...`);
   // Primary: Cloudflare FLUX.2 [klein] 9B. Fall back to a real on-topic Unsplash
