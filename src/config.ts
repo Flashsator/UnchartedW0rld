@@ -117,6 +117,23 @@ export const THUMB_LAYOUT_MIN_SAMPLES = Number(process.env.THUMB_LAYOUT_MIN_SAMP
 export const ENABLE_TOPIC_VALIDATION = process.env.ENABLE_TOPIC_VALIDATION === '1';
 export const TOPIC_CANDIDATE_COUNT = Number(process.env.TOPIC_CANDIDATE_COUNT ?? 5);
 
+// --- Content self-audit (opt-in) ----------------------------------------------
+// When ENABLE_CONTENT_AUDIT=1, the end of each run reads the channel's most
+// recent uploads (title / pre-fold hook / tags) and asks the script CLI to score
+// them against the views playbook and surface concrete fixes — a QUALITATIVE
+// self-critique of the actual shipped packaging that, unlike the analytics
+// loops, needs no accrued watch data to be useful on a young channel. Purely
+// advisory: it writes a dated entry to CONTENT_AUDIT_LOG_FILE and raises a
+// GitHub Actions warning annotation on a detected regression, but never edits a
+// live video (that's ctrRescue's job) and never fails the run. Best-effort/
+// non-fatal; skipped on DRY_RUN via the pipeline's early return.
+export const ENABLE_CONTENT_AUDIT = process.env.ENABLE_CONTENT_AUDIT === '1';
+// Append-only audit history (one dated block per run). Rides the rotation-state
+// cache like the other work/.* state files, so it must be listed in daily.yml.
+export const CONTENT_AUDIT_LOG_FILE = path.join(WORK_DIR, '.content-audit.log');
+// How many most-recent uploads to feed the auditor (titles + hooks + tags).
+export const CONTENT_AUDIT_RECENT_COUNT = Number(process.env.CONTENT_AUDIT_RECENT_COUNT ?? 8);
+
 // Appended to every long-form description (after chapters, before attribution)
 // so each video carries a consistent channel pitch + subscribe CTA. The
 // ?sub_confirmation=1 link only opens the subscribe prompt on a /channel/UC...

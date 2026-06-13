@@ -124,6 +124,7 @@ jobs:
             work/.commented-videos
             work/.ctr-rescued
             work/.thumb-layout-log
+            work/.content-audit.log
           key: rotation-state-${{ github.run_id }}
           restore-keys: |
             rotation-state-
@@ -179,9 +180,11 @@ jobs:
           #  - AUTO_COMMENT: seed one engagement comment under recently-public videos
           #  - CTR_RESCUE: regenerate at most one underperforming long-form thumbnail
           #  - TOPIC_VALIDATION: score candidate angles against real YouTube search demand
+          #  - CONTENT_AUDIT: qualitative self-critique of recent packaging (advisory log)
           ENABLE_AUTO_COMMENT: '1'
           ENABLE_CTR_RESCUE: '1'
           ENABLE_TOPIC_VALIDATION: '1'
+          ENABLE_CONTENT_AUDIT: '1'
           SERIES_KEY: ${{ inputs.series_key }}
           SUB_THEME: ${{ inputs.sub_theme }}
           STRUCTURE_KEY: ${{ inputs.structure_key }}

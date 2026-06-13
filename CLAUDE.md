@@ -137,8 +137,17 @@ extends to packaging — swapped via `videos.update`; an unusable rewrite falls
 back to the thumbnail lever so the run's one rescue isn't wasted). The state
 file records `videoId<TAB>lever` so the log doubles as an A/B record of which
 lever moves CTR. One rescue per run (FLUX free tier), one rescue per video
-ever. Their state files (`work/.commented-videos`, `work/.ctr-rescued`,
-`work/.thumb-layout-log`) ride the `rotation-state-` cache in `daily.yml` —
+ever. A third pass, `auditRecentContent` (`src/contentAudit.ts`,
+`ENABLE_CONTENT_AUDIT`), reads the channel's most recent uploads' packaging
+(title / pre-fold hook / tags) and asks the script CLI to score them against the
+views playbook and surface concrete fixes. Unlike the analytics loops it needs
+NO accrued watch data, so it produces signal on a young channel from day one. It
+is **purely advisory**: it appends a dated entry to `work/.content-audit.log`
+and raises a non-failing GitHub Actions `::warning::` annotation on a regression
+(score `< 5` or the model flags drift), but it **never edits a live video**
+(that's `rescueWorstPackaging`'s job) and **never fails the run**. Their state
+files (`work/.commented-videos`, `work/.ctr-rescued`, `work/.thumb-layout-log`,
+`work/.content-audit.log`) ride the `rotation-state-` cache in `daily.yml` —
 **any new state file must be added to that cache's `path:` list** or it
 silently resets every run.
 

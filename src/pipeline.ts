@@ -43,6 +43,7 @@ import { pickThumbLayoutWeighted, recordThumbLayout } from './thumbLayoutStats.j
 import { validateTopicDemand } from './topicResearch.js';
 import { autoCommentOnRecentVideos } from './engage.js';
 import { rescueWorstPackaging } from './ctrRescue.js';
+import { auditRecentContent } from './contentAudit.js';
 import { extractIconEvents } from './iconExtractor.js';
 import { computeCutTimes } from './cuts.js';
 import { buildShortsManifest, planShortsForToday, publishAtFor } from './shortsGen.js';
@@ -397,11 +398,14 @@ async function main(): Promise<void> {
 
   // End-of-run housekeeping over PAST uploads (each opt-in via its env flag and
   // fully non-fatal): seed one engagement comment under each recently-public
-  // video that lacks ours, and rescue at most one underperforming long-form
-  // video's packaging (alternating thumbnail/title lever). Runs only on real
+  // video that lacks ours, rescue at most one underperforming long-form video's
+  // packaging (alternating thumbnail/title lever), and run a qualitative
+  // self-audit of recent packaging against the views playbook (advisory log +
+  // non-failing warning; never edits a live video). Runs only on real
   // (non-DRY_RUN) runs — the early DRY_RUN return above skips it.
   await autoCommentOnRecentVideos();
   await rescueWorstPackaging();
+  await auditRecentContent();
 }
 
 async function runShortsPipeline(
