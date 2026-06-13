@@ -193,6 +193,13 @@ silently resets every run.
   (replay rate is a Shorts ranking signal). The subscribe/watch-full end card in
   `ShortsScene.tsx` is kept for reversibility but only renders when
   `outroSec > 0`; the funnel lives in the description link (next bullet).
+  To tighten the loop, `ShortsScene.tsx` re-fades the opening hook card back in
+  over the final ~1.2s (`loopBackOpacity`, gated `!hasOutro` so it never fights
+  the reversible end card), so the seam lands back on the hook and re-arms the
+  curiosity gap on replay. The opener itself is front-loaded: the Shorts-cut
+  prompt rule makes sections 3/5's FIRST narration sentence the section's
+  biggest scroll-stopping hook — framed as a TEASE, never the payoff, so the
+  no-spoiler chapter rule and invariant #1 still hold.
 - **Schedule:** `PUBLISH_WEEKDAYS_UTC = [1,3,5]`; `WEEKDAY_SERIES_MAP` = Mon→animals,
   Wed→insects, Fri→plants. The run is *triggered* at 13:00 UTC but each long video
   is *scheduled public* at `PUBLISH_HOUR_UTC` = **19:00 UTC** (the US-afternoon

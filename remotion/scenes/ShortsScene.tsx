@@ -130,6 +130,21 @@ export function ShortsScene({ manifest }: ShortsSceneProps) {
     [0, 1, 1, 0],
     { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
   );
+  // Loop-back: in the final ~1.2s the same hook card fades back in, so when the
+  // Short loops (outroSec = 0, no end card) the seam lands back on the opening
+  // hook instead of a bare last frame — the curiosity gap re-arms and replay
+  // rate (a Shorts ranking signal) climbs. Skipped when the reversible end card
+  // is active, which already owns the tail.
+  const loopBackStart = totalFrames - Math.round(fps * 1.2);
+  const loopBackOpacity = hasOutro
+    ? 0
+    : interpolate(
+        frame,
+        [loopBackStart, loopBackStart + Math.round(fps * 0.5)],
+        [0, 1],
+        { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
+      );
+  const titleOpacity = Math.max(hookOpacity, loopBackOpacity);
 
   return (
     <AbsoluteFill style={{ backgroundColor: 'black', opacity: fadeIn }}>
@@ -160,7 +175,7 @@ export function ShortsScene({ manifest }: ShortsSceneProps) {
           top: 240,
           left: 56,
           right: 56,
-          opacity: hookOpacity,
+          opacity: titleOpacity,
         }}
       >
         <div
