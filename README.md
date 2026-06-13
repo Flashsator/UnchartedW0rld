@@ -135,11 +135,12 @@ Each is gated by an env flag (set to `'1'` in `daily.yml`, OFF by default locall
 | Flag | What it does | Module |
 |---|---|---|
 | `ENABLE_ANALYTICS_FEEDBACK` | Ranks past videos by CTR/retention/views; feeds the top title into the outro "Watch next" card + title-generation hints | `src/analytics.ts` |
-| `ENABLE_TOPIC_VALIDATION` | Before script-gen, proposes candidate angles and scores each against real YouTube search results (median views of top hits); the proven winner steers the episode topic | `src/topicResearch.ts` |
+| `ENABLE_TOPIC_VALIDATION` | Before script-gen, proposes candidate angles and scores each against real YouTube search results, picking for *winnable demand* not raw popularity: only candidates in the `[15k, 2M]` median band survive, then it prefers the highest demand **floor** (tie-broken by median). The winner steers the episode topic and its exact search query is forced verbatim into the description's first two sentences + a tag for on-page SEO | `src/topicResearch.ts` |
 | `ENABLE_AUTO_COMMENT` | End of each run, posts one engagement comment (a reply-bait question) under each recently-public video without one — today's upload gets its comment on the *next* run, once live | `src/engage.ts` |
 | `ENABLE_CTR_RESCUE` | Finds at most ONE long-form video (2–21 days old, ≥300 impressions) whose CTR is <70% of the channel median, regenerates its thumbnail with a fresh layout, and swaps it in. Each video is rescued at most once | `src/ctrRescue.ts` |
+| `ENABLE_CONTENT_AUDIT` | End of each run, has the script CLI qualitatively critique the *actual shipped packaging* (title / pre-fold hook / tags) of recent uploads against the views playbook. Needs **no** accrued watch data, so it produces signal from day one. Purely advisory: appends to `work/.content-audit.log` + raises a non-failing GitHub `::warning::` on a regression — it never edits a live video and never fails the run | `src/contentAudit.ts` |
 
-Auto-comment and CTR-rescue persist their "already done" sets in `work/.commented-videos` / `work/.ctr-rescued`, cached across ephemeral CI runners via the `rotation-state-` cache in `daily.yml` — any new state file must be added to that cache's `path:` list.
+Auto-comment, CTR-rescue, the thumbnail-layout stats, and the content audit persist their state in `work/.commented-videos` / `work/.ctr-rescued` / `work/.thumb-layout-log` / `work/.content-audit.log`, cached across ephemeral CI runners via the `rotation-state-` cache in `daily.yml` — any new state file must be added to that cache's `path:` list.
 
 Shorts are cut **loop-friendly**: the composition ends exactly where the narration ends (`OUTRO_SEC = 0`, no end card), so the Short restarts mid-curiosity — replay rate is a Shorts ranking signal. The long-video funnel lives in the description's `▶ Full video:` link. Long-form metadata is also localized (title + blurb) into **es/pt/hi/id/fr/de/ja** as discovery metadata; the channel stays English-primary.
 
@@ -159,6 +160,7 @@ src/             pipeline modules (one per stage)
   topicResearch.ts  topic demand validation vs YouTube search (opt-in)
   engage.ts      auto engagement comments on recent videos (opt-in)
   ctrRescue.ts   underperforming-thumbnail rescue loop (opt-in)
+  contentAudit.ts  data-free packaging self-critique → advisory log (opt-in)
   pipeline.ts    orchestrator (entry point)
 remotion/        composition + scenes (Intro / SectionScene / AmbientBreather / Outro)
 scripts/         bootstrap_youtube_token.ts
