@@ -397,6 +397,27 @@ export function hookNumbersAreSpoken(hook: string, episodeNumbers: Set<string>):
   return true;
 }
 
+// Normalize a raw model `shortsHook`: coerce to a trimmed string (a non-string
+// would throw at the Shorts consumer) and drop it if it surfaces a number the
+// episode never speaks (invariant #1 — it becomes the Short's title + card). The
+// numeric drop is logged: it's the one path that silently degrades a Short's
+// title to a fallback, so an over-firing guard (e.g. a year the narration spells
+// out in words) stays visible rather than quietly eating good hooks.
+function normalizeShortsHook(
+  raw: unknown,
+  episodeNumbers: Set<string>,
+  sectionIdx: number,
+): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (!hookNumbersAreSpoken(trimmed, episodeNumbers)) {
+    log(`shortsHook dropped (section ${sectionIdx}): unspoken number in "${trimmed}"`);
+    return undefined;
+  }
+  return trimmed;
+}
+
 export function sanitizeOverlay(raw: unknown, narration: string): SectionOverlay | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
@@ -525,17 +546,10 @@ function normalizeEpisode(ep: Episode, series: Series, subTheme: string): Episod
       ...sec,
       visual: anchorVisual(sec.visual, subject),
       visuals: sanitizeVisuals(sec.visuals, sec.visual, subject),
-      // Model JSON is an unchecked cast — a non-string shortsHook would throw
-      // at the Shorts consumer, so normalize it to a trimmed string or drop it.
-      // It also surfaces on-screen as the Short's title card, so a hook stating
-      // a number the episode never speaks is dropped (invariant #1) — the Shorts
-      // builder then falls back to the episode hook / chapter heading.
-      shortsHook:
-        typeof sec.shortsHook === 'string' &&
-        sec.shortsHook.trim() &&
-        hookNumbersAreSpoken(sec.shortsHook.trim(), episodeNumbers)
-          ? sec.shortsHook.trim()
-          : undefined,
+      // shortsHook is the Short's title + on-screen card; normalize it to a
+      // trimmed string and drop it (back to the episode hook / chapter heading)
+      // if it states an unspoken number — see normalizeShortsHook.
+      shortsHook: normalizeShortsHook(sec.shortsHook, episodeNumbers, i),
     };
     if (!OVERLAY_ALLOWED_SECTIONS.has(i)) {
       const { overlays: _unused, ...rest } = base;
