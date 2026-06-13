@@ -28,7 +28,22 @@ export interface TopicCandidate {
 
 export interface ScoredCandidate extends TopicCandidate {
   medianViews: number;
+  // Lowest view count among the query's top hits. A high floor means even the
+  // weakest top-ranked video still pulls real views, so the TOPIC reliably
+  // delivers views to whoever ranks (not one viral outlier inflating the
+  // median). Caveat: a high floor can ALSO signal that big channels already own
+  // every top slot — proxy for "demand depth", not for "low competition". We
+  // log it every run so the next few topic-validation lines can confirm winners
+  // aren't all high-floor/high-competition before we lean harder on it.
+  floorViews: number;
 }
+
+// A query whose top hits median ABOVE this is a saturated niche owned by
+// mega-channels — unwinnable for a young, low-authority channel. BELOW the
+// lower bound there is no real audience to capture. The sweet spot is proven
+// demand we can still rank into.
+const SATURATED_MEDIAN = 2_000_000;
+const NO_DEMAND_MEDIAN = 15_000;
 
 function getClient() {
   if (!YT_CLIENT_ID || !YT_CLIENT_SECRET || !YT_REFRESH_TOKEN) {
@@ -74,15 +89,28 @@ export function parseCandidates(raw: string, max: number = TOPIC_CANDIDATE_COUNT
   return [];
 }
 
-// The winner is simply the candidate whose search query surfaces the most-viewed
-// existing videos. Zero-scored candidates (no results / no stats) never win, so
-// when every probe failed we return null and the model keeps its own choice.
+// Winnable-demand pick. Raw "highest median" loses for a young, low-authority
+// channel: the top-median queries are saturated mega-niches owned by huge
+// channels we can't out-rank, and the very-low-median queries have no audience
+// to capture. So we first keep only candidates inside the winnable band
+// [NO_DEMAND_MEDIAN, SATURATED_MEDIAN]; among those we prefer the highest FLOOR
+// (every top hit pulls real views = broad, repeatable demand rather than one
+// viral outlier inflating the median), tie-broken by the higher median. Zero-
+// scored candidates (no results / no stats) can never win, so when every probe
+// failed — or nothing landed in the band — we fall back accordingly and the
+// model keeps its own choice.
 export function pickBestCandidate(scored: ScoredCandidate[]): ScoredCandidate | null {
-  const best = scored.reduce<ScoredCandidate | null>(
-    (acc, c) => (c.medianViews > (acc?.medianViews ?? 0) ? c : acc),
-    null,
+  const withDemand = scored.filter((c) => c.medianViews > 0);
+  if (withDemand.length === 0) return null;
+  const winnable = withDemand.filter(
+    (c) => c.medianViews >= NO_DEMAND_MEDIAN && c.medianViews <= SATURATED_MEDIAN,
   );
-  return best && best.medianViews > 0 ? best : null;
+  const pool = winnable.length > 0 ? winnable : withDemand;
+  return pool.reduce<ScoredCandidate | null>((acc, c) => {
+    if (!acc) return c;
+    if (c.floorViews !== acc.floorViews) return c.floorViews > acc.floorViews ? c : acc;
+    return c.medianViews > acc.medianViews ? c : acc;
+  }, null);
 }
 
 // Renders the winning candidate as the topic-steer block generateEpisode
@@ -92,7 +120,10 @@ export function buildTopicDirective(c: ScoredCandidate): string {
     `Subject: ${c.subject}\n` +
     `Angle: ${c.angle}\n` +
     `(Validated: YouTube search "${c.searchQuery}" — top results have a median of ` +
-    `${Math.round(c.medianViews).toLocaleString('en-US')} views, so this angle has proven audience demand.)`
+    `${Math.round(c.medianViews).toLocaleString('en-US')} views, so this angle has proven audience demand.)\n` +
+    `SEO (search ranking — this is the MEASURED query that has demand): weave the exact phrase ` +
+    `"${c.searchQuery}" verbatim into the first two sentences of the "description", and include it ` +
+    `verbatim as one of the "tags". It must read as natural prose, never a keyword dump.`
   );
 }
 
@@ -140,9 +171,13 @@ async function proposeCandidates(
   return parseCandidates(raw);
 }
 
-// Median view count of the top search hits for this query — proven demand for
-// the angle. 0 on any failure so the candidate simply can't win.
-async function scoreQuery(yt: ReturnType<typeof google.youtube>, query: string): Promise<number> {
+// Demand read for a query: the median view count of its top search hits (proven
+// demand for the angle) plus the floor (lowest of those hits — how consistent
+// that demand is). Both 0 on any failure so the candidate simply can't win.
+async function scoreQuery(
+  yt: ReturnType<typeof google.youtube>,
+  query: string,
+): Promise<{ medianViews: number; floorViews: number }> {
   try {
     const search = await yt.search.list({
       part: ['id'],
@@ -154,15 +189,16 @@ async function scoreQuery(yt: ReturnType<typeof google.youtube>, query: string):
     const ids = (search.data.items ?? [])
       .map((i) => i.id?.videoId)
       .filter((id): id is string => Boolean(id));
-    if (ids.length === 0) return 0;
+    if (ids.length === 0) return { medianViews: 0, floorViews: 0 };
     const stats = await yt.videos.list({ part: ['statistics'], id: ids });
     const views = (stats.data.items ?? [])
       .map((v) => Number(v.statistics?.viewCount))
       .filter((n) => Number.isFinite(n));
-    return median(views);
+    if (views.length === 0) return { medianViews: 0, floorViews: 0 };
+    return { medianViews: median(views), floorViews: Math.min(...views) };
   } catch (e) {
     log(`Topic validation: scoring "${query}" failed (candidate scored 0): ${(e as Error).message}`);
-    return 0;
+    return { medianViews: 0, floorViews: 0 };
   }
 }
 
@@ -184,10 +220,11 @@ export async function validateTopicDemand(
     const yt = getClient();
     const scored: ScoredCandidate[] = [];
     for (const c of candidates) {
-      const medianViews = await scoreQuery(yt, c.searchQuery);
-      scored.push({ ...c, medianViews });
+      const { medianViews, floorViews } = await scoreQuery(yt, c.searchQuery);
+      scored.push({ ...c, medianViews, floorViews });
       log(
-        `Topic validation: "${c.searchQuery}" → median ${Math.round(medianViews).toLocaleString('en-US')} views`,
+        `Topic validation: "${c.searchQuery}" → median ${Math.round(medianViews).toLocaleString('en-US')} ` +
+          `(floor ${Math.round(floorViews).toLocaleString('en-US')}) views`,
       );
     }
     const best = pickBestCandidate(scored);

@@ -20,7 +20,12 @@ const wordsHi = Math.round(WORDS_PER_SECTION * 1.4);
 // existing retry take another pass; accept the last attempt regardless so the
 // pipeline never stalls. 0.6 is lenient enough to pass once the model writes at
 // a normal length, while still catching the ~300-word failures.
-const MIN_TOTAL_WORDS = Math.round(TARGET_WORDS * 0.6);
+// Floor at 0.8 of target (not 0.6): at the real ~178 wpm TTS rate, 0.6×~1425
+// words is only ~4:48 of narration — under the 8:00 mid-roll-ad threshold
+// invariant #4 exists to clear. 0.8 (~6:24 narration + interlude beds/gaps)
+// keeps the final cut safely past 8:00 while still leaving the ±10% target
+// band room, so the retry only rejects genuinely-too-short scripts.
+const MIN_TOTAL_WORDS = Math.round(TARGET_WORDS * 0.8);
 
 function totalNarrationWords(ep: Episode): number {
   return ep.sections.reduce(
@@ -127,7 +132,7 @@ Shape:
   "title": "string, 50-70 chars, ${structure.label} framing, no clickbait lies",
   "hook": "string, 1 sentence, 8-14 words — the cold-open line of section 0",
   "description": "string, 600-1000 chars, YouTube description with 3 hashtags at the end. The FIRST sentence must state the single most surprising fact of the episode (the payoff) before any location or setup — it is the only line viewers see before the fold, so it must hook. The first TWO sentences together must also naturally contain the subject's common name AND 1-2 phrases a curious viewer would actually type into YouTube search for this topic (e.g. 'how do cats drink water', 'why do termites explode') — woven into natural prose, NEVER a keyword list. Then expand.",
-  "tags": ["10-15 single-word or 2-word tags. Include 3-4 BROAD high-search-volume terms a curious non-expert would actually type (e.g. 'weird animals', 'nature documentary', 'insect defense', 'did you know') alongside the precise scientific names — not only academic jargon"],
+  "tags": ["10-15 tags. Include 3-4 BROAD high-search-volume terms a curious non-expert would actually type (e.g. 'weird animals', 'nature documentary', 'insect defense', 'did you know') AND 2-4 LONG-TAIL multi-word PHRASE tags that match the exact question a viewer would search ('why do cats knead', 'how do octopuses change color') — long-tail phrases are where a small channel actually ranks — alongside the precise scientific names. Not only academic jargon"],
   "subject": "string, 1-3 words — the ONE concrete, photographable thing this whole episode is about (a creature, object, place, or person), e.g. 'cat', 'honeybee', 'octopus', 'Venus flytrap'. This is the visual anchor for EVERY b-roll query below. Must be a real, searchable noun, not an abstract idea. STOCK-FOOTAGE RULE (CRITICAL): pick a COMMON, widely-filmed creature that free stock libraries (Pexels, Pixabay) reliably have real video of — a familiar animal/insect/plant a stranger could picture instantly. Do NOT pick an obscure species stock libraries have never filmed (e.g. a rare bird like a 'chough', an unfilmed deep-sea worm); those force the b-roll onto generic unrelated scenery (random landscapes) because the providers fuzzy-match a no-result query. The SURPRISE must come from the ANGLE, not from an exotic subject: a familiar creature doing something almost nobody knows about.",
   "thumbnailConcept": "string, 8-20 words — a SINGLE concrete, photographable real-world scene for the thumbnail background that instantly reads as this topic to a stranger AND is visually dramatic through CONTRAST: a bright, vividly-lit, sharply-focused subject that pops off the frame, saturated color, a tense moment or unexpected pose, crisp directional or rim light that sculpts the subject. The subject must stay BRIGHT and clearly visible — 'dramatic' must NOT mean a dark, dim, or muddy image; never bury the subject in shadow (it renders unreadable on a phone feed). The subject must occupy a LARGE central portion of the frame (fill roughly half its width) so it stays instantly recognizable at small phone-feed thumbnail size — a tiny subject lost in a wide scene reads as nothing. Describe ONE clear subject + setting + lighting. NO abstract textures, NO extreme macro close-ups, NO collages, NO flat evenly-lit specimen shots, NO overall-dark scenes. Good: 'a single termite filling the frame, its back glowing vivid electric blue under crisp directional light, sharp against a clean contrasting background'. Bad: 'a termite on pale wood with a small blue patch, flat lighting', 'a dim dark moody scene', 'micro-detail biology', 'abstract neural patterns'.",
   "thumbnailWord": "string, ONE punchy uppercase word (3-8 letters) for the thumbnail caption — the single idea a viewer should feel. e.g., 'LISTEN', 'BURIED', 'WRONG'. Must NOT be a structural word like CASE/FILE/PROFILE, and must NOT repeat a word already in the title — it complements the title, it does not echo it.",
@@ -179,6 +184,7 @@ Title style:
 - Stay in THIS episode's title frame — ${structure.titleStyleNote} Keep that voice; the frame is meant to vary episode to episode, so do NOT flatten every title into the same shape.
 - Within that frame, SURFACE THE STAKES: the concrete subject and its single most surprising action, consequence, or outcome from this script must be present and prominent — a strong verb or a high-stakes noun. The frame is the wrapper; the shock is the payload. Never let generic wrapper words ("what … actually does", "the truth about …") fill the title while the surprising thing stays vague or hidden.
 - Good — frame kept, shock visible: "The Termite That Explodes Itself to Kill Ants". Weak — wrapper with the shock buried: "What the Blue Crystals on This Termite's Back Actually Do".
+- FRONT-LOAD THE SUBJECT: the concrete subject and a surprising verb/noun must appear within the first ~40 characters of the title — that is all a phone feed shows before truncation, and it is what search matches. Never bury the subject behind a label prefix ("Case File:", "Profile:", "Report:") that eats the opening characters before the topic appears.
 - 50-70 chars. No clickbait lies — the payoff must be real and delivered in the script.
 - Never invent specific institutions, document numbers, or named whistleblowers. Plausible and generic only.
 - No exclamation marks. No emoji. No ALL CAPS except a single word for emphasis at most.
@@ -196,9 +202,9 @@ Opening rule (CRITICAL — TWO-PART OPEN, THIS RUN'S HOOK STYLE: "${hook.name}")
 - The "hook" JSON field must match sentence 1 of section 0 verbatim.
 - No "Did you know", no "welcome", no title card phrasing, no setup. Go straight in.
 
-- Sentence 2 of section 0 is the PROMISE TAIL — a single sentence that tells the viewer what they will discover, framed as quietly withheld from public attention. Pick ONE phrasing from this list and adapt it to today's specific topic:
+- Sentence 2 of section 0 is the PROMISE TAIL — a single fresh sentence (WRITE A NEW ONE each time, do not reuse a stock template) that performs these FUNCTIONS: (a) name or strongly gesture at the concrete reveal to come, (b) raise a stake or tension, (c) withhold the mechanism so the viewer must watch to resolve it. Make it concrete and ominous, not generic. These are EXAMPLES of the shape only — match their function, never copy their wording:
 ${PROMISE_TAIL_PHRASINGS.map((p) => `  * "${p}"`).join('\n')}
-  Make the promise concrete and ominous, not generic. Do NOT default to the "documentary/coverage" flavored phrasings — prefer one that promises a concrete sight or reveal; the whole script may reference documentaries/field guides/textbooks "missing this" AT MOST once. Never state the video's runtime aloud.
+  Avoid the "documentaries/textbooks skip this" conspiracy framing — a binge viewer hears it as a template; the whole script may reference documentaries/field guides/textbooks "missing this" AT MOST once. Never state the video's runtime aloud.
 - Sentence 3 onwards in section 0 begins the actual narrative as section 0's role specifies.
 
 Per-section roles (every section, in order — follow EXACTLY):
@@ -211,6 +217,7 @@ Pacing rules (every section):
 - Do NOT do mini-twists in every section. Follow the structural template above — the reversal / discovery / deepest layer happens at the section the template says, not earlier.
 - PAYOFF CALLBACK: at the single section where this template lands its reveal, close the loop the cold open promised — one short sentence that points back at the section-0 promise (the question the viewer clicked for) right before paying it off. Exactly ONE callback, at the reveal only; never sprinkle recap callbacks across other sections. If the reveal section is 3 or 5 (a Shorts cut), phrase the callback context-free: restate the promise as a fresh claim, never "the question we opened with" / "at the start of this video".
 - Section 1 introduces the specific subject by name without explaining everything.
+- FORWARD-PROMISE (exactly ONE, in section 1 or 2, distinct from the single payoff callback): plant one short sentence that explicitly tells the viewer something stranger/more important is still coming later ("and what happens by the end is the part no one expects") — a tripwire that re-hooks viewers across the mid-video sag. It must point at a real payoff actually delivered later in the script; never promise something the script doesn't pay off (invariant #1).
 
 Shorts cut rule (CRITICAL — sections 3 and 5 only):
 - Sections 3 and 5 are republished VERBATIM as standalone Shorts, shown cold to viewers who have NOT seen any other part of the episode.

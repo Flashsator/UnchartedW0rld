@@ -110,6 +110,8 @@ const POWER_WORDS = ['WAIT', 'TRUTH', 'WRONG', 'HIDDEN', 'GONE', 'REAL', 'FAKE',
 const PALETTES = [
   { block: '#000000', accent: '#FFFFFF', text: '#FFFFFF', textAlt: '#FFE94A', stroke: '#000000' }, // white on black (max contrast)
   { block: '#000000', accent: '#FFE94A', text: '#FFE94A', textAlt: '#FFFFFF', stroke: '#000000' }, // warm yellow on black
+  { block: '#0B1A2E', accent: '#FFFFFF', text: '#FFFFFF', textAlt: '#FFE94A', stroke: '#06101C' }, // white on deep navy
+  { block: '#0A1F1C', accent: '#FFE94A', text: '#FFE94A', textAlt: '#FFFFFF', stroke: '#04100E' }, // yellow on dark teal
 ];
 
 type Palette = (typeof PALETTES)[number];
@@ -462,10 +464,18 @@ export async function makeThumbnail(
   // leaf, so the full leg array is never splayed out and countable, plus a
   // count-AGNOSTIC anatomy hint (the series also covers arachnids, so never
   // hardcode "six legs"). Other series keep the standard medium-shot framing.
+  // Eye contact and a sense of scale are the two most reliably CTR-positive
+  // thumbnail cues, so bake them in — but only where they mean something. For
+  // insects the leg-occlusion framing is load-bearing (diffusion miscounts
+  // legs), so add the camera-gaze but never anything that splays the legs back
+  // out. The plant series has no eye to meet, so it keeps a dramatic scale/light
+  // cue without the meaningless gaze instruction. Animals get the full cue.
   const framing =
     series.key === 'insects'
-      ? 'head-on three-quarter portrait, legs tucked under the body or partly hidden behind a flower or leaf, anatomically correct, accurate leg anatomy'
-      : 'cinematic medium shot';
+      ? 'head-on three-quarter portrait making eye contact with the camera, legs tucked under the body or partly hidden behind a flower or leaf, anatomically correct, accurate leg anatomy'
+      : series.key === 'plants'
+        ? 'cinematic medium shot, dramatic directional light, a clear sense of scale'
+        : 'cinematic medium shot, looking directly at the camera with intense eye contact, a clear sense of scale';
   // Lead with the episode subject so the image actually depicts this topic, but
   // force a recognizable real-world composition: viewers must instantly read
   // WHAT it is. Extreme macro / abstract textures look like nothing.

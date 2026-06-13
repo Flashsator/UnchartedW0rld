@@ -183,11 +183,20 @@ silently resets every run.
   count of its query's top YouTube search hits (search.list = 100 quota units
   each, ~500/run of the 10k daily budget), and feeds the winner to
   `generateEpisode` as a topic *steer*, not an order: the script model still
-  owns the episode and every safety rule. When analytics feedback is on, the
-  channel's own winning titles are passed as a soft flavor hint to the
-  candidate proposer (deliberately NOT a hard weighting — a young channel's
-  sample is taste, not statistics). Any failure falls back silently to the
-  model's own topic choice.
+  owns the episode and every safety rule. The winner is NOT just the highest
+  median: `pickBestCandidate` keeps only candidates in the **winnable band**
+  `[NO_DEMAND_MEDIAN 15k, SATURATED_MEDIAN 2M]` (above the ceiling = a saturated
+  mega-niche a young channel can't out-rank; below the floor = no real
+  audience), then prefers the highest **floor** (lowest of the top hits — proxy
+  for demand depth, logged each run so we can confirm it isn't just selecting
+  high-competition queries), tie-broken by median; it falls back to best-by-floor
+  if nothing lands in the band, and returns null (model keeps its own choice)
+  only when every probe scored 0. The winner's exact search query is also forced
+  verbatim into the description's first two sentences + one tag for on-page SEO
+  (`buildTopicDirective`). When analytics feedback is on, the channel's own
+  winning titles are passed as a soft flavor hint to the candidate proposer
+  (deliberately NOT a hard weighting — a young channel's sample is taste, not
+  statistics). Any failure falls back silently to the model's own topic choice.
 - **Shorts loop seamlessly (by design):** `OUTRO_SEC = 0` in `src/shortsGen.ts` —
   a Short ends exactly where its narration ends so it loops mid-curiosity
   (replay rate is a Shorts ranking signal). The subscribe/watch-full end card in

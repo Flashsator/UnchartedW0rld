@@ -12,6 +12,7 @@ const CAND = (over: Partial<ScoredCandidate> = {}): ScoredCandidate => ({
   angle: 'the physics of how cats lap water',
   searchQuery: 'how do cats drink water',
   medianViews: 100_000,
+  floorViews: 20_000,
   ...over,
 });
 
@@ -58,17 +59,41 @@ test('returns empty array on garbage output', () => {
 
 // --- pickBestCandidate ---------------------------------------------------------------
 
-test('picks the candidate with the highest median views', () => {
+test('prefers a winnable-band candidate over a saturated mega-niche', () => {
   const scored = [
-    CAND({ subject: 'low', medianViews: 1_000 }),
-    CAND({ subject: 'high', medianViews: 500_000 }),
-    CAND({ subject: 'mid', medianViews: 50_000 }),
+    // Highest median, but saturated (above SATURATED_MEDIAN) — unwinnable.
+    CAND({ subject: 'saturated', medianViews: 8_000_000, floorViews: 3_000_000 }),
+    // Solid proven demand inside the band — the right pick.
+    CAND({ subject: 'winnable', medianViews: 400_000, floorViews: 120_000 }),
   ];
-  assert.equal(pickBestCandidate(scored)?.subject, 'high');
+  assert.equal(pickBestCandidate(scored)?.subject, 'winnable');
+});
+
+test('among winnable candidates prefers the higher floor (consistent demand)', () => {
+  const scored = [
+    // Higher median but a tiny floor = one viral outlier propping it up.
+    CAND({ subject: 'spiky', medianViews: 600_000, floorViews: 5_000 }),
+    // Lower median but every top hit pulls real views = broad demand.
+    CAND({ subject: 'broad', medianViews: 300_000, floorViews: 150_000 }),
+  ];
+  assert.equal(pickBestCandidate(scored)?.subject, 'broad');
+});
+
+test('falls back to best available when nothing lands in the winnable band', () => {
+  // All below NO_DEMAND_MEDIAN — no winnable candidate, so pick the strongest
+  // by floor rather than returning null (some demand beats the model's blind choice).
+  const scored = [
+    CAND({ subject: 'tiny', medianViews: 3_000, floorViews: 500 }),
+    CAND({ subject: 'less-tiny', medianViews: 9_000, floorViews: 4_000 }),
+  ];
+  assert.equal(pickBestCandidate(scored)?.subject, 'less-tiny');
 });
 
 test('returns null when every candidate scored zero (all probes failed)', () => {
-  const scored = [CAND({ medianViews: 0 }), CAND({ subject: 'b', medianViews: 0 })];
+  const scored = [
+    CAND({ medianViews: 0, floorViews: 0 }),
+    CAND({ subject: 'b', medianViews: 0, floorViews: 0 }),
+  ];
   assert.equal(pickBestCandidate(scored), null);
   assert.equal(pickBestCandidate([]), null);
 });
