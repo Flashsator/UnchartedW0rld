@@ -214,10 +214,16 @@ silently resets every run.
   To tighten the loop, `ShortsScene.tsx` re-fades the opening hook card back in
   over the final ~1.2s (`loopBackOpacity`, gated `!hasOutro` so it never fights
   the reversible end card), so the seam lands back on the hook and re-arms the
-  curiosity gap on replay. The opener itself is front-loaded: the Shorts-cut
-  prompt rule makes sections 3/5's FIRST narration sentence the section's
-  biggest scroll-stopping hook — framed as a TEASE, never the payoff, so the
-  no-spoiler chapter rule and invariant #1 still hold.
+  curiosity gap on replay. The hook card itself is tuned for the swipe-decision
+  moment: a near-hard cut-in (3-frame fade, not ~0.3s up from black, so frame 0
+  is footage), a transform-only entrance pop/lift that settles by frame 12, and a
+  length-aware hold (`hookHoldSec` ≈ chars/13, floored 2.4s / capped 4.6s) so a
+  short punch clears fast while a 3-line hook gets read. The pop/lift are clamped
+  to rest at scale 1 / no offset, so they never re-animate during the tail
+  loop-back re-fade. The opener is also front-loaded: the Shorts-cut prompt rule
+  makes sections 3/5's FIRST narration sentence the section's biggest
+  scroll-stopping hook — framed as a TEASE, never the payoff, so the no-spoiler
+  chapter rule and invariant #1 still hold.
 - **Schedule:** `PUBLISH_WEEKDAYS_UTC = [1,3,5]`; `WEEKDAY_SERIES_MAP` = Mon→animals,
   Wed→insects, Fri→plants. The run is *triggered* at 13:00 UTC but each long video
   is *scheduled public* at `PUBLISH_HOUR_UTC` = **19:00 UTC** (the US-afternoon
@@ -232,7 +238,17 @@ silently resets every run.
   FIRST sentence to stand alone for a cold viewer (name the subject, zero-context
   claim) and adds a per-section `shortsHook` field (8-14 word standalone hook)
   that `buildShortsManifest` prefers over the chapter-label heading for the
-  Short's title/card — heading stays the fallback on older episodes.
+  Short's title/card. The prompt writes `shortsHook` for **sections 0, 3 and 5**
+  — section 0 is the same-day teaser, whose spoken cold-open line may withhold the
+  subject for mystery, so its `shortsHook` carries the standalone, subject-named
+  version the teaser's title/card needs (no clickbait: the claim must be real and
+  actually delivered in the episode). Fallbacks differ by section: the teaser
+  (section 0) falls back to the episode cold-open hook, off-day sections to the
+  chapter heading (older episodes wrote `shortsHook` only on 3/5). Because a
+  `shortsHook` is published as the Short's title AND rendered as the on-screen
+  card, invariant #1 extends to it: `normalizeEpisode` drops any hook stating a
+  number the episode never speaks (`hookNumbersAreSpoken` vs the whole episode's
+  `spokenNumbers`) back to that fallback rather than caption a fabricated figure.
 - **Shorts → long-video funnel:** the only *automated* link from a Short to its
   long video is the `▶ Full video:` URL line in the Short's description
   (`shortsDescription` in `src/youtube.ts`). YouTube's native **Related-video

@@ -121,15 +121,36 @@ export function ShortsScene({ manifest }: ShortsSceneProps) {
     extrapolateRight: 'clamp',
   });
 
-  const fadeIn = interpolate(frame, [0, 8], [0, 1], { extrapolateRight: 'clamp' });
-  // Title (series badge + hook) shows only at the start, then clears out so
-  // the rest of the short is unobstructed.
+  // Near-hard cut in: a Short's first frame is both its swipe-decision moment and
+  // its poster still, so we don't burn ~0.3s fading up from black. 3 frames
+  // (~0.1s) just softens the very first frame against a decode pop, then the shot
+  // is fully up — the viewer lands on the footage, not a black screen.
+  const fadeIn = interpolate(frame, [0, 3], [0, 1], { extrapolateRight: 'clamp' });
+  // Title (series badge + hook) shows only at the start, then clears out so the
+  // rest of the short is unobstructed. The hold scales to the hook's length: a
+  // short punch clears fast (it shouldn't loiter over the footage), a 3-line hook
+  // gets longer to read. ~13 chars/sec, floored/capped so it never snaps away or
+  // overstays.
+  const hookHoldSec = Math.min(4.6, Math.max(2.4, manifest.cardHook.length / 13));
+  const hookOutStart = Math.round(fps * hookHoldSec);
   const hookOpacity = interpolate(
     frame,
-    [0, 10, Math.round(fps * 3.5), Math.round(fps * 4.2)],
+    [0, 10, hookOutStart, hookOutStart + Math.round(fps * 0.7)],
     [0, 1, 1, 0],
     { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
   );
+  // Entrance pop: the card scales up from 92% and lifts into place over the first
+  // ~0.4s so the hook reads as a kinetic beat rather than a static title slapped
+  // onto frame 0. transform-only (compositor-friendly) and clamped, so it rests
+  // at scale 1 / no offset for the hold AND the loop-back re-fade.
+  const cardPop = interpolate(frame, [0, 12], [0.92, 1], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+  const cardLift = interpolate(frame, [0, 12], [16, 0], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
   // Loop-back: in the final ~1.2s the same hook card fades back in, so when the
   // Short loops (outroSec = 0, no end card) the seam lands back on the opening
   // hook instead of a bare last frame — the curiosity gap re-arms and replay
@@ -176,6 +197,8 @@ export function ShortsScene({ manifest }: ShortsSceneProps) {
           left: 56,
           right: 56,
           opacity: titleOpacity,
+          transform: `translateY(${cardLift}px) scale(${cardPop})`,
+          transformOrigin: 'left top',
         }}
       >
         <div

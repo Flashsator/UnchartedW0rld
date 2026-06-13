@@ -20,7 +20,7 @@ hours of the **next** Taiwan day (03:00 / 05:00).
 | 週三 (Wed) | 昆蟲 Insects | Tiny Titans (`insects`) | 13:00 / 21:00 | 19:00 / 03:00 (隔天) |
 | 週五 (Fri) | 植物 Plants | Rooted Anomalies (`plants`) | 13:00 / 21:00 | 19:00 / 03:00 (隔天) |
 
-Each long-video run also produces **Shorts**, all derived from that day's episode. It publishes a **same-day teaser** (the cold-open hook, section 0, staggered to 21:00 UTC so it funnels viewers into the fresh long video) **plus** later-section Shorts dripped onto the off-days. The off-day Shorts go out at the normal 19:00 UTC slot. Net result: **every day of the week gets exactly one Short**, and no two Shorts from the same episode reuse a section:
+Each long-video run also produces **Shorts**, all derived from that day's episode. It publishes a **same-day teaser** (section 0, staggered to 21:00 UTC so it funnels viewers into the fresh long video) **plus** later-section Shorts dripped onto the off-days. The teaser leads with the script's standalone, subject-named `shortsHook` (the spoken cold-open may withhold the subject for mystery) and falls back to the cold-open hook on older episodes; off-day Shorts use their section's `shortsHook`, falling back to the chapter heading. The off-day Shorts go out at the normal 19:00 UTC slot. Net result: **every day of the week gets exactly one Short**, and no two Shorts from the same episode reuse a section:
 
 Short 發片日 below is the **UTC** day; in Taiwan (UTC+8) each lands in the early hours of the next morning.
 

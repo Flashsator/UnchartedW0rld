@@ -143,7 +143,7 @@ Shape:
       "visual": "string, 6-12 words — a SINGLE summary b-roll query for this whole section (subject + the section's main scene). Used as the cold-open shot and a fallback. MUST start with the episode \"subject\". e.g. subject 'cave spider' -> 'cave spider crawling on wet rock in dark cave'. NEVER an abstract or tangential query that drops the subject (no bare 'old library', 'laboratory', 'starry sky', 'flowing data').",
       "visuals": ["3-6 strings, ORDERED to match this section's narration beat by beat. Split the narration into its successive moments and write ONE 6-12 word b-roll stock query per moment, in the SAME order they are spoken, so the footage shows what is being said as it is said. Each MUST start with the episode \"subject\", then that moment's scene/action/setting. e.g. narration goes rest -> feed -> attack, so visuals = ['cave spider resting in a dark rock crevice','cave spider wrapping a moth in silk','cave spider lunging at prey in the dark']. Cover the whole section in order; never drop the subject; no abstract or tangential shots."],
       "overlays": "optional array, 0-2 items, ONLY for sections 2, 3, 4, 5 — see Overlay Rules below",
-      "shortsHook": "ONLY for sections 3 and 5 (omit the key everywhere else): string, 8-14 words — a standalone curiosity hook used as the TITLE of the Short cut from this section. It must name the subject by its common name, make a complete hooky claim a viewer with ZERO context understands instantly, and must NOT spoil this section's payoff or repeat the episode title. No clickbait lies: the claim must be real and actually delivered in THIS section's narration — never invent a number or fact for the hook."
+      "shortsHook": "ONLY for sections 0, 3 and 5 (omit the key everywhere else): string, 8-14 words — a standalone curiosity hook used as the TITLE + on-screen card of the Short cut from this section. It must name the subject by its common name, make a complete hooky claim a viewer with ZERO context understands instantly, and must NOT spoil the reveal or repeat the episode title. For section 0 (the same-day teaser Short) this is REQUIRED: section 0's spoken cold-open line may withhold the subject for mystery, which reads as a weak standalone Short title, so name the subject here and tease the episode's central question without answering it. No clickbait lies: the claim must be real and actually delivered in the episode — never invent a number or fact for the hook."
     }
   ]
 }
@@ -225,7 +225,8 @@ Shorts cut rule (CRITICAL — sections 3 and 5 only):
 - Make that first sentence the BIGGEST hook in the section — the single most surprising, visceral, scroll-stopping claim this section can make, front-loaded into the first ~2 seconds of speech (a Short lives or dies on its opening second). Frame it as a TEASE, never the payoff: pose the strange fact or question, do NOT reveal this section's resolution (the no-spoiler chapter rule still holds). Lead with the shocking image or verb, not throat-clearing setup — "Most spiders never do this — this one builds a second body" beats "Spiders are fascinating animals that...".
 - Never open section 3 or 5 with a bare pronoun standing in for the subject, a callback phrase ("remember", "as we saw", "that same..."), or an unexplained term that was only introduced in an earlier section.
 - If a section role above prescribes an opening line for section 3 or 5, rewrite that line so it names the subject and stands alone — the cold-open requirement wins.
-- Give sections 3 and 5 — and ONLY them — the "shortsHook" field described in the Shape.`;
+- Section 0 is ALSO republished as the same-day teaser Short (it is the channel's highest-traffic Short, dropped beside the long video). Its spoken cold-open line is free to stay a subject-less mystery for the long-video viewer — do NOT change it — but that line reads flat as a standalone Short title, so section 0 carries a "shortsHook" too: a context-free, subject-named curiosity hook that teases the episode's central question without revealing the payoff. It need not match section 0's first spoken sentence verbatim; it supplies on the card the context the cold open withholds.
+- Give sections 0, 3 and 5 — and ONLY them — the "shortsHook" field described in the Shape.`;
 }
 
 export async function generateEpisode(
@@ -381,6 +382,21 @@ export function spokenNumbers(narration: string): Set<string> {
   return out;
 }
 
+// A `shortsHook` becomes a Short's on-screen title card AND the published video
+// title (`buildShortsManifest` → cardHook/shortsTitle), so invariant #1 applies:
+// any number it surfaces must be one the episode actually speaks. Unlike an
+// overlay it is keyed to the WHOLE episode's narration, not one section — the
+// section-0 teaser hook legitimately draws on the entire episode and need not
+// echo its own section's first sentence. Returns false on the first unspoken
+// figure so the caller can drop the hook back to its safe fallback rather than
+// caption a fabricated number. Hooks with no digits always pass.
+export function hookNumbersAreSpoken(hook: string, episodeNumbers: Set<string>): boolean {
+  for (const n of spokenNumbers(hook)) {
+    if (!episodeNumbers.has(n)) return false;
+  }
+  return true;
+}
+
 export function sanitizeOverlay(raw: unknown, narration: string): SectionOverlay | null {
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
@@ -496,6 +512,11 @@ function normalizeEpisode(ep: Episode, series: Series, subTheme: string): Episod
 
   const subject = deriveSubject(ep, subTheme);
 
+  // Every figure the episode speaks anywhere — the honesty set a shortsHook is
+  // checked against (it's title + on-screen card, and the teaser hook draws on
+  // the whole episode, so the gate spans all sections, not one).
+  const episodeNumbers = spokenNumbers(ep.sections.map((s) => s.narration ?? '').join(' '));
+
   const sections = ep.sections.map((sec, i) => {
     // Anchor every section's b-roll query to the episode subject so the footage
     // stays on-topic even when the model writes an off-subject "visual", and
@@ -506,8 +527,13 @@ function normalizeEpisode(ep: Episode, series: Series, subTheme: string): Episod
       visuals: sanitizeVisuals(sec.visuals, sec.visual, subject),
       // Model JSON is an unchecked cast — a non-string shortsHook would throw
       // at the Shorts consumer, so normalize it to a trimmed string or drop it.
+      // It also surfaces on-screen as the Short's title card, so a hook stating
+      // a number the episode never speaks is dropped (invariant #1) — the Shorts
+      // builder then falls back to the episode hook / chapter heading.
       shortsHook:
-        typeof sec.shortsHook === 'string' && sec.shortsHook.trim()
+        typeof sec.shortsHook === 'string' &&
+        sec.shortsHook.trim() &&
+        hookNumbersAreSpoken(sec.shortsHook.trim(), episodeNumbers)
           ? sec.shortsHook.trim()
           : undefined,
     };

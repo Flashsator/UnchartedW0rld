@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spokenNumbers, sanitizeOverlay } from '../src/scriptGen.js';
+import { spokenNumbers, sanitizeOverlay, hookNumbersAreSpoken } from '../src/scriptGen.js';
 
 // spokenNumbers — the honesty primitive: every numeric figure the narration
 // actually states, normalized so commas/percents/trailing dots collapse to a
@@ -14,6 +14,26 @@ test('spokenNumbers normalizes commas, percents and trailing dots', () => {
 
 test('spokenNumbers returns empty set when the narration states no figures', () => {
   assert.equal(spokenNumbers('The spider hides behind a decoy of itself.').size, 0);
+});
+
+// hookNumbersAreSpoken — invariant #1 for the shortsHook, which surfaces as the
+// Short's on-screen title card + published title. A hook may only state figures
+// the episode actually speaks; an unspoken number drops the hook (caller falls
+// back). Keyed to the whole episode, since the teaser hook draws on all of it.
+test('hookNumbersAreSpoken passes a hook whose numbers are all spoken', () => {
+  const spoken = spokenNumbers('It strikes in 0.02 seconds and lives 30 years.');
+  assert.equal(hookNumbersAreSpoken('A strike in 0.02 seconds you can never see', spoken), true);
+});
+
+test('hookNumbersAreSpoken passes a hook with no numbers at all', () => {
+  const spoken = spokenNumbers('A cat laps water faster than gravity pulls it back.');
+  assert.equal(hookNumbersAreSpoken('How a cat outruns gravity every single morning', spoken), true);
+});
+
+test('hookNumbersAreSpoken rejects a hook stating a number the episode never speaks', () => {
+  const spoken = spokenNumbers('A juvenile carries 12 milligrams; an adult carries 30.');
+  // 500 appears nowhere in the narration — a fabricated figure on the title card.
+  assert.equal(hookNumbersAreSpoken('This bite delivers 500 times the venom you expect', spoken), false);
 });
 
 // sanitizeOverlay — the no-fabricated-data gate. An overlay may only surface

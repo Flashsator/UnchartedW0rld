@@ -23,12 +23,14 @@ export type ScriptSection = {
   // the whole section. Falls back to [visual] when the model omits it.
   visuals?: string[];
   overlays?: SectionOverlay[];
-  // Sections 3 and 5 are republished verbatim as standalone Shorts (the fixed
-  // shorts plan in shortsGen). For those two the script model also writes a
-  // context-free curiosity hook used as the Short's title + on-screen card —
-  // the section heading is a chapter label, not a hook, and reads flat as a
-  // Shorts title. Absent on other sections and on older episodes (falls back
-  // to the heading).
+  // Sections 0, 3 and 5 are republished as standalone Shorts (section 0 is the
+  // same-day teaser; 3 and 5 are off-day drips — the fixed plan in shortsGen).
+  // For those the script model writes a context-free curiosity hook used as the
+  // Short's title + on-screen card. Section 0's spoken cold-open line may withhold
+  // the subject for mystery, so its shortsHook supplies the standalone, subject-
+  // named version the teaser's card/title needs. Absent on other sections and on
+  // older episodes — the teaser then falls back to the episode hook, off-day
+  // sections to the chapter heading.
   shortsHook?: string;
 };
 

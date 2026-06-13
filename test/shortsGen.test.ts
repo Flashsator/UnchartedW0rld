@@ -80,7 +80,7 @@ function manifestFixture(): RenderManifest {
   };
 }
 
-function episodeFixture(shortsHook?: string): Episode {
+function episodeFixture(shortsHook?: string, section0Hook?: string): Episode {
   return {
     title: 'The Cat That Defies Gravity Every Time It Drinks',
     hook: 'Your cat breaks the laws of physics every morning.',
@@ -90,12 +90,26 @@ function episodeFixture(shortsHook?: string): Episode {
       heading: `Chapter Label ${i}`,
       narration: 'Hello.',
       visual: 'cat drinking water',
+      ...(i === 0 && section0Hook !== undefined ? { shortsHook: section0Hook } : {}),
       ...(i === 3 && shortsHook !== undefined ? { shortsHook } : {}),
     })),
   };
 }
 
-test('teaser short (section 0) titles with the episode cold-open hook', () => {
+test('teaser short (section 0) prefers its own standalone shortsHook', () => {
+  const sm = buildShortsManifest(
+    manifestFixture(),
+    episodeFixture(undefined, 'A cat laps water faster than gravity can pull it back'),
+    { sectionIdx: 0, daysAhead: 0 },
+  );
+  assert.ok(sm);
+  assert.equal(sm.shortsTitle, 'A cat laps water faster than gravity can pull it back');
+  assert.equal(sm.hook, 'A cat laps water faster than gravity can pull it back');
+});
+
+test('teaser short falls back to the cold-open hook when section 0 has no shortsHook', () => {
+  // Older episodes wrote shortsHook only on sections 3/5; the teaser must still
+  // title cleanly off the episode hook rather than the subject-less heading.
   const sm = buildShortsManifest(manifestFixture(), episodeFixture('Unused hook for section three'), {
     sectionIdx: 0,
     daysAhead: 0,
