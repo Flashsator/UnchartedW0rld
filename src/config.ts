@@ -187,6 +187,11 @@ export const TTS_VOICE_FALLBACK = 'en-US-GuyNeural';
 export const TTS_RATE = '-2%';
 
 export const BROLL_CLIP_SEC = 5;
+// Shorts cut faster than the long-form (a vertical, muted, fast-scrolled feed
+// rewards energy): a Short holds each shot ~3.4s vs the long-form 5s, so the
+// same narration gets ~50% more cuts. Drives both the portrait-clip fetch quota
+// (fetchShortsBroll) and the Short's cut-time count (pipeline clipQuota).
+export const SHORTS_CLIP_SEC = 3.4;
 export const BROLL_MIN_HEIGHT = 1080;
 
 // Background-music level (0–1) mixed under the narration by ffmpeg (see mux.ts).

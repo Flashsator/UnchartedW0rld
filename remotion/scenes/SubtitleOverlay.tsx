@@ -109,7 +109,7 @@ export function SubtitleOverlay({ words, variant = 'horizontal' }: SubtitleOverl
           // rather than a static recolor. transform scale doesn't reflow, so
           // neighbouring words stay put.
           const pop = isActive
-            ? interpolate(t - w.start, [0, 0.1], [0.82, 1], {
+            ? interpolate(t - w.start, [0, 0.08, 0.16], [0.82, 1.08, 1], {
                 extrapolateLeft: 'clamp',
                 extrapolateRight: 'clamp',
               })

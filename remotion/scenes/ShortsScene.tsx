@@ -28,8 +28,10 @@ type KenBurns = {
 // The on-screen hook is the single biggest text block on the short. The text is
 // already distilled to one short thought upstream (compactHook, ≤60 chars), so
 // the font stays large and punchy and only eases down for the longest cases.
-// Paired with the 3-line clamp below, this keeps the title to a tidy block near
-// the top instead of swallowing the frame.
+// That ≤60-char cap keeps even the largest tier to ~2 lines, so the title sits
+// as a tidy block near the top instead of swallowing the frame — which is why
+// the headline can render as per-word spans (no line-clamp; a clamp would crop
+// the cascade's translateY entrance).
 function hookFontSize(text: string): number {
   const len = text.trim().length;
   if (len <= 24) return 84;
@@ -55,25 +57,34 @@ function KenBurnsClip({
   src,
   durationInFrames,
   motion,
+  isFirst = false,
 }: {
   src: string;
   durationInFrames: number;
   motion: KenBurns;
+  isFirst?: boolean;
 }) {
   const frame = useCurrentFrame();
   const range = [0, durationInFrames];
-  const scale = interpolate(frame, range, [motion.scaleFrom, motion.scaleTo], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  });
-  const tx = interpolate(frame, range, [motion.xFrom, motion.xTo], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  });
-  const ty = interpolate(frame, range, [motion.yFrom, motion.yTo], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  });
+  const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const;
+
+  let scale: number;
+  let tx = 0;
+  let ty = 0;
+  if (isFirst) {
+    // Snap-zoom landing on the Short's first shot: a fast push-in over the first
+    // ~0.3s, then a slow drift, so the open lands on motion instead of a slow
+    // creep. No pan — a centered punch reads as a confident "snap to". The short-
+    // clip guard keeps interpolate's input range strictly increasing.
+    scale =
+      durationInFrames <= 12
+        ? interpolate(frame, [0, durationInFrames], [1.26, 1.14], clamp)
+        : interpolate(frame, [0, 9, durationInFrames], [1.26, 1.15, 1.12], clamp);
+  } else {
+    scale = interpolate(frame, range, [motion.scaleFrom, motion.scaleTo], clamp);
+    tx = interpolate(frame, range, [motion.xFrom, motion.xTo], clamp);
+    ty = interpolate(frame, range, [motion.yFrom, motion.yTo], clamp);
+  }
   return (
     <AbsoluteFill
       style={{
@@ -126,6 +137,8 @@ export function ShortsScene({ manifest }: ShortsSceneProps) {
   // (~0.1s) just softens the very first frame against a decode pop, then the shot
   // is fully up — the viewer lands on the footage, not a black screen.
   const fadeIn = interpolate(frame, [0, 3], [0, 1], { extrapolateRight: 'clamp' });
+  const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const;
+
   // Title (series badge + hook) shows only at the start, then clears out so the
   // rest of the short is unobstructed. The hold scales to the hook's length: a
   // short punch clears fast (it shouldn't loiter over the footage), a 3-line hook
@@ -133,29 +146,37 @@ export function ShortsScene({ manifest }: ShortsSceneProps) {
   // overstays.
   const hookHoldSec = Math.min(4.6, Math.max(2.4, manifest.cardHook.length / 13));
   const hookOutStart = Math.round(fps * hookHoldSec);
-  const hookOpacity = interpolate(
+  // Macro envelope for the whole title block: fully ON from frame 0 (the per-word
+  // cascade below owns the intro reveal, so the container must NOT also ramp up or
+  // the leading words would double-fade), held through hookOutStart, then faded
+  // out before the footage takes the frame back.
+  const hookEnvelope = interpolate(
     frame,
-    [0, 10, hookOutStart, hookOutStart + Math.round(fps * 0.7)],
-    [0, 1, 1, 0],
-    { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
+    [0, hookOutStart, hookOutStart + Math.round(fps * 0.7)],
+    [1, 1, 0],
+    clamp,
   );
-  // Entrance pop: the card scales up from 92% and lifts into place over the first
-  // ~0.4s so the hook reads as a kinetic beat rather than a static title slapped
-  // onto frame 0. transform-only (compositor-friendly) and clamped, so it rests
-  // at scale 1 / no offset for the hold AND the loop-back re-fade.
-  const cardPop = interpolate(frame, [0, 12], [0.92, 1], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  });
-  const cardLift = interpolate(frame, [0, 12], [16, 0], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  });
+  // Badge stinger: the series chip stamps in first with a quick overshoot, a beat
+  // ahead of the headline, so the open reads as a designed title hit rather than a
+  // static label. transform + opacity only.
+  const badgeIn = interpolate(frame, [0, 7], [0, 1], clamp);
+  const badgeScale = interpolate(frame, [0, 5, 10], [0.7, 1.06, 1], clamp);
+  // Headline kinetic cascade: each word rises + fades in on a small stagger so the
+  // hook builds like motion graphics instead of one static block dropped on frame
+  // 0 — the single biggest fix for the "reads like a narrated article" feel. The
+  // cascade is bounded to ~CASCADE_WINDOW frames regardless of word count so a long
+  // hook never drags past the swipe-decision moment. compactHook is ≤60 chars
+  // upstream, so it stays ≤3 lines without a hard clamp (a clamp + per-word lift
+  // would clip the entrance).
+  const hookWords = manifest.cardHook.trim().split(/\s+/).filter(Boolean);
+  const CASCADE_WINDOW = 16;
+  const WORD_RISE = 7;
   // Loop-back: in the final ~1.2s the same hook card fades back in, so when the
   // Short loops (outroSec = 0, no end card) the seam lands back on the opening
   // hook instead of a bare last frame — the curiosity gap re-arms and replay
   // rate (a Shorts ranking signal) climbs. Skipped when the reversible end card
-  // is active, which already owns the tail.
+  // is active, which already owns the tail. Per-word opacities are clamped to 1
+  // by then, so the block simply re-appears without re-cascading.
   const loopBackStart = totalFrames - Math.round(fps * 1.2);
   const loopBackOpacity = hasOutro
     ? 0
@@ -163,9 +184,9 @@ export function ShortsScene({ manifest }: ShortsSceneProps) {
         frame,
         [loopBackStart, loopBackStart + Math.round(fps * 0.5)],
         [0, 1],
-        { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' },
+        clamp,
       );
-  const titleOpacity = Math.max(hookOpacity, loopBackOpacity);
+  const titleOpacity = Math.max(hookEnvelope, loopBackOpacity);
 
   return (
     <AbsoluteFill style={{ backgroundColor: 'black', opacity: fadeIn }}>
@@ -177,7 +198,12 @@ export function ShortsScene({ manifest }: ShortsSceneProps) {
         const motion = kenBurnsFor(i);
         return (
           <Sequence key={i} from={startFrame} durationInFrames={durFrames}>
-            <KenBurnsClip src={pathToSrc(p)} durationInFrames={durFrames} motion={motion} />
+            <KenBurnsClip
+              src={pathToSrc(p)}
+              durationInFrames={durFrames}
+              motion={motion}
+              isFirst={i === 0}
+            />
           </Sequence>
         );
       })}
@@ -197,8 +223,6 @@ export function ShortsScene({ manifest }: ShortsSceneProps) {
           left: 56,
           right: 56,
           opacity: titleOpacity,
-          transform: `translateY(${cardLift}px) scale(${cardPop})`,
-          transformOrigin: 'left top',
         }}
       >
         <div
@@ -213,27 +237,40 @@ export function ShortsScene({ manifest }: ShortsSceneProps) {
             letterSpacing: '0.22em',
             marginBottom: 24,
             textTransform: 'uppercase',
+            opacity: badgeIn,
+            transform: `scale(${badgeScale})`,
+            transformOrigin: 'left center',
           }}
         >
           {manifest.series}
         </div>
-        <div
-          style={{
-            color: '#fff',
-            fontFamily: '"Inter", "Helvetica Neue", system-ui, sans-serif',
-            fontWeight: 800,
-            fontSize: hookFontSize(manifest.cardHook),
-            lineHeight: 1.08,
-            letterSpacing: '-0.01em',
-            textShadow:
-              '0 2px 14px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.95)',
-            display: '-webkit-box',
-            WebkitLineClamp: 3,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-          }}
-        >
-          {manifest.cardHook}
+        <div>
+          {hookWords.map((word, i) => {
+            const startF =
+              hookWords.length > 1 ? (i / (hookWords.length - 1)) * CASCADE_WINDOW : 0;
+            const wOpacity = interpolate(frame, [startF, startF + WORD_RISE], [0, 1], clamp);
+            const wLift = interpolate(frame, [startF, startF + WORD_RISE], [20, 0], clamp);
+            return (
+              <span
+                key={i}
+                style={{
+                  display: 'inline-block',
+                  marginRight: '0.28em',
+                  opacity: wOpacity,
+                  transform: `translateY(${wLift}px)`,
+                  color: '#fff',
+                  fontFamily: '"Inter", "Helvetica Neue", system-ui, sans-serif',
+                  fontWeight: 800,
+                  fontSize: hookFontSize(manifest.cardHook),
+                  lineHeight: 1.08,
+                  letterSpacing: '-0.01em',
+                  textShadow: '0 2px 14px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.95)',
+                }}
+              >
+                {word}
+              </span>
+            );
+          })}
         </div>
       </div>
 

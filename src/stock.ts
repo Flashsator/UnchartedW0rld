@@ -7,6 +7,7 @@ import {
   COVERR_API_KEY,
   PEXELS_API_KEY,
   PIXABAY_API_KEY,
+  SHORTS_CLIP_SEC,
   UNSPLASH_ACCESS_KEY,
   VIDEO_FPS,
   VIDEO_H,
@@ -915,7 +916,10 @@ export async function fetchShortsBroll(
   const queries = beats.map((b) => b.trim()).filter(Boolean);
   if (queries.length === 0) return [];
   const opts: BrollFetchOpts = { orientation: 'portrait', pixabayCategory };
-  const needed = Math.max(1, Math.ceil(narrationSec / BROLL_CLIP_SEC));
+  // Shorts cut faster than the long-form, so fetch to the tighter SHORTS_CLIP_SEC
+  // quota — enough portrait clips to fill the quicker cut cadence (pipeline's
+  // clipQuota uses the same constant).
+  const needed = Math.max(1, Math.ceil(narrationSec / SHORTS_CLIP_SEC));
   const allocation = allocateClipsAcrossBeats(needed, queries.length);
 
   const clips: BrollClip[] = [];

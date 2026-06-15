@@ -13,6 +13,7 @@ import {
   OUTRO_SUBSCRIBE_SEC,
   OUT_DIR,
   PUBLISH_OFFSET_HOURS,
+  SHORTS_CLIP_SEC,
   TARGET_MINUTES,
   UPLOAD_LOCK_FILE,
   WORK_DIR,
@@ -473,7 +474,10 @@ async function runShortsPipeline(
     // OffthreadVideo does not loop — the tail would freeze on the last frame.
     // Cut times are rebuilt for the final clip count against the
     // already-trimmed words.
-    const clipQuota = Math.max(1, Math.ceil(base.narrationSec / BROLL_CLIP_SEC));
+    // Shorts cut faster than the long-form (SHORTS_CLIP_SEC, ~3.4s vs 5s), so
+    // the same narration gets ~50% more cut slots — the quota the portrait
+    // fetch (fetchShortsBroll) targets with the same constant.
+    const clipQuota = Math.max(1, Math.ceil(base.narrationSec / SHORTS_CLIP_SEC));
     const sm =
       portraitPaths.length >= 2
         ? (() => {
