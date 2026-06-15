@@ -110,6 +110,10 @@ export type Interlude = {
   durationSec: number;
   visualPath: string;
   audioPath: string;
+  // Heading of the section this breather leads into. When present, the
+  // AmbientBreather renders an "act break" chapter card over the dimmed footage
+  // so the interlude is a designed attention reset, not just a quiet clip.
+  label?: string;
 };
 
 export type StingConfig = {

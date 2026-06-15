@@ -45,7 +45,7 @@ import { autoCommentOnRecentVideos } from './engage.js';
 import { rescueWorstPackaging } from './ctrRescue.js';
 import { auditRecentContent } from './contentAudit.js';
 import { extractIconEvents } from './iconExtractor.js';
-import { computeCutTimes } from './cuts.js';
+import { computeCutTimes, sectionClipSeconds } from './cuts.js';
 import { buildShortsManifest, planShortsForToday, publishAtFor } from './shortsGen.js';
 import type {
   Episode,
@@ -175,6 +175,10 @@ async function main(): Promise<void> {
     const beats = episode.sections[i]?.visuals?.length
       ? episode.sections[i]!.visuals!
       : [sec.visual];
+    // Vary shots-per-second along the episode's narrative arc so the cut cadence
+    // isn't a flat ~5s metronome (the single biggest cause of mid-video visual
+    // fatigue): patient open, montage near the climax, calmer finale.
+    const clipSec = sectionClipSeconds(i, sectionAudios.length, BROLL_CLIP_SEC);
     const clips = await fetchBrollForBeats(
       beats,
       sec.duration,
@@ -183,6 +187,7 @@ async function main(): Promise<void> {
       footageUsed,
       imageCredits,
       { pixabayCategory },
+      clipSec,
     );
     broll.push(clips.map((c) => relAsset(runDir, c.path)));
   }
@@ -231,11 +236,15 @@ async function main(): Promise<void> {
       imageCredits,
       { pixabayCategory },
     );
+    // The breather doubles as an act break: title the chapter it leads into so
+    // the viewer's eye lands on a fresh, designed beat instead of more footage.
+    const nextHeading = sectionAudios[interludePositions[k]! + 1]?.heading?.trim();
     interludes.push({
       afterSectionIndex: interludePositions[k]!,
       durationSec: INTERLUDE_SEC,
       visualPath: relAsset(runDir, visuals[0]!.path),
       audioPath: ambient.path,
+      ...(nextHeading ? { label: nextHeading } : {}),
     });
   }
 

@@ -141,7 +141,16 @@ function StatBody({ overlay, progress }: { overlay: SectionOverlay; progress: nu
     <div style={{ position: 'relative', width: 540, padding: '32px 36px' }}>
       <ProtectionBlock width={540} height={260} />
       <div style={{ position: 'relative' }}>
-        <div style={{ width: 96, height: 2, background: ACCENT, marginBottom: 26 }} />
+        <div
+          style={{
+            width: 96,
+            height: 2,
+            background: ACCENT,
+            marginBottom: 26,
+            transform: `scaleX(${progress})`,
+            transformOrigin: 'left center',
+          }}
+        />
         <div
           style={{
             fontFamily: '"Inter", "Helvetica Neue", system-ui, sans-serif',
@@ -176,12 +185,20 @@ function StatBody({ overlay, progress }: { overlay: SectionOverlay; progress: nu
   );
 }
 
-function LabelBody({ overlay }: { overlay: SectionOverlay }) {
+function LabelBody({ overlay, progress }: { overlay: SectionOverlay; progress: number }) {
   return (
     <div style={{ position: 'relative', width: 620, padding: '28px 32px' }}>
       <ProtectionBlock width={620} height={170} />
       <div style={{ position: 'relative', display: 'flex', gap: 22 }}>
-        <div style={{ width: 4, alignSelf: 'stretch', background: ACCENT }} />
+        <div
+          style={{
+            width: 4,
+            alignSelf: 'stretch',
+            background: ACCENT,
+            transform: `scaleY(${progress})`,
+            transformOrigin: 'top center',
+          }}
+        />
         <div>
           <div
             style={{
@@ -370,7 +387,9 @@ export function OverlayLayer({ overlays, words, sectionIdx }: OverlayLayerProps)
             }}
           >
             {r.overlay.kind === 'stat' ? <StatBody overlay={r.overlay} progress={fillProgress} /> : null}
-            {r.overlay.kind === 'label' ? <LabelBody overlay={r.overlay} /> : null}
+            {r.overlay.kind === 'label' ? (
+              <LabelBody overlay={r.overlay} progress={fillProgress} />
+            ) : null}
             {r.overlay.kind === 'compare' ? (
               <CompareBody overlay={r.overlay} fillProgress={fillProgress} />
             ) : null}

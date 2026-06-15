@@ -3,6 +3,37 @@ import type { WordTiming } from './types.js';
 const MIN_CLIP_SEC = 2.2;
 const MAX_CLIP_SEC = 5.5;
 
+// --- Narrative-arc shot pacing -------------------------------------------------
+// A good editor doesn't cut on a metronome. The opening is patient (let the
+// world settle), the body builds, the penultimate beat quickens into the reveal
+// like a montage, and the finale breathes again. We express that as
+// seconds-per-shot per section; the b-roll fetch turns it into a clip count and
+// computeCutTimes lays the cuts on sentence boundaries within that budget. The
+// effect is real because clip count — not computeCutTimes — sets the cadence:
+// a faster section simply fetches more shots over the same narration.
+const SLOW_HOLD_MULT = 1.26; // patient opening hold
+const FAST_HOLD_MULT = 0.74; // quickest montage hold
+const ARC_PEAK = 0.78; // where the episode peaks (penultimate section)
+const FINALE_ENERGY = 0.45; // the close still has life, but slows to breathe
+
+/**
+ * Seconds each b-roll shot should hold for the section at `index` of `count`,
+ * scaled from `base` along the episode's narrative arc. Energy ramps from the
+ * calm open up to a montage peak near ARC_PEAK, then eases back for the finale.
+ * Pure (unit-tested); returns `base` unchanged for a single-section episode.
+ */
+export function sectionClipSeconds(index: number, count: number, base: number): number {
+  if (count <= 1 || base <= 0) return base;
+  const p = index / (count - 1);
+  const energyRaw =
+    p <= ARC_PEAK
+      ? p / ARC_PEAK
+      : 1 - (1 - FINALE_ENERGY) * ((p - ARC_PEAK) / (1 - ARC_PEAK));
+  const energy = Math.max(0, Math.min(1, energyRaw));
+  const mult = SLOW_HOLD_MULT - (SLOW_HOLD_MULT - FAST_HOLD_MULT) * energy;
+  return Math.round(base * mult * 10) / 10;
+}
+
 function endsSentence(text: string): boolean {
   return /[.!?]["')\]]?$/.test(text);
 }

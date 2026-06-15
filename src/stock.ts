@@ -846,14 +846,20 @@ export async function fetchBrollForBeats(
   sourcesUsed?: Set<string>,
   commonsCredits?: ImageCredit[],
   opts: BrollFetchOpts = {},
+  // Seconds-per-shot for this section (defaults to BROLL_CLIP_SEC). The narrative
+  // arc passes a smaller value for montage-paced sections and a larger one for
+  // calm ones, so the cut cadence varies across the episode instead of holding a
+  // flat ~5s metronome (see sectionClipSeconds in cuts.ts).
+  clipSec: number = BROLL_CLIP_SEC,
 ): Promise<BrollClip[]> {
   const cacheDir = ensureDir(path.join(workDir, 'broll'));
   const queries = beats.map((b) => b.trim()).filter(Boolean);
   if (queries.length === 0) {
     throw new Error('fetchBrollForBeats called with no queries');
   }
-  // At least one clip per beat, but never fewer than the duration would need.
-  const needed = Math.max(queries.length, Math.ceil(sectionDuration / BROLL_CLIP_SEC));
+  // At least one clip per beat, but never fewer than the pace-adjusted duration.
+  const perShot = clipSec > 0 ? clipSec : BROLL_CLIP_SEC;
+  const needed = Math.max(queries.length, Math.ceil(sectionDuration / perShot));
   const allocation = allocateClipsAcrossBeats(needed, queries.length);
 
   const clips: BrollClip[] = [];

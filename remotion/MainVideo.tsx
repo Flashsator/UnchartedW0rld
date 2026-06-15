@@ -13,7 +13,7 @@ export const MainVideo: React.FC<{ manifest: RenderManifest }> = ({ manifest }) 
 
   type Placement =
     | { kind: 'section'; start: number; frames: number; sec: RenderManifest['sections'][number]; index: number }
-    | { kind: 'interlude'; start: number; frames: number; visualPath: string };
+    | { kind: 'interlude'; start: number; frames: number; visualPath: string; label?: string };
 
   const placements: Placement[] = [];
   let cursor = Math.round(manifest.intro.durationSec * FPS);
@@ -26,7 +26,13 @@ export const MainVideo: React.FC<{ manifest: RenderManifest }> = ({ manifest }) 
     const il = interludeByAfter.get(i);
     if (il) {
       const ilFrames = Math.round(il.durationSec * FPS);
-      placements.push({ kind: 'interlude', start: cursor, frames: ilFrames, visualPath: il.visualPath });
+      placements.push({
+        kind: 'interlude',
+        start: cursor,
+        frames: ilFrames,
+        visualPath: il.visualPath,
+        ...(il.label ? { label: il.label } : {}),
+      });
       cursor += ilFrames;
     }
   }
@@ -47,13 +53,17 @@ export const MainVideo: React.FC<{ manifest: RenderManifest }> = ({ manifest }) 
         if (p.kind === 'section') {
           return (
             <Sequence key={`sec-${k}`} from={p.start} durationInFrames={p.frames}>
-              <SectionScene section={p.sec} index={p.index} />
+              <SectionScene
+                section={p.sec}
+                index={p.index}
+                sectionCount={manifest.sections.length}
+              />
             </Sequence>
           );
         }
         return (
           <Sequence key={`int-${k}`} from={p.start} durationInFrames={p.frames}>
-            <AmbientBreather visualPath={p.visualPath} />
+            <AmbientBreather visualPath={p.visualPath} label={p.label} />
           </Sequence>
         );
       })}
