@@ -142,7 +142,7 @@ Each is gated by an env flag (set to `'1'` in `daily.yml`, OFF by default locall
 
 Auto-comment, CTR-rescue, the thumbnail-layout stats, and the content audit persist their state in `work/.commented-videos` / `work/.ctr-rescued` / `work/.thumb-layout-log` / `work/.content-audit.log`, cached across ephemeral CI runners via the `rotation-state-` cache in `daily.yml` — any new state file must be added to that cache's `path:` list.
 
-Shorts are cut **loop-friendly**: the composition ends exactly where the narration ends (`OUTRO_SEC = 0`, no end card), so the Short restarts mid-curiosity — replay rate is a Shorts ranking signal. The long-video funnel lives in the description's `▶ Full video:` link. Long-form metadata is also localized (title + blurb) into **es/pt/hi/id/fr/de/ja** as discovery metadata; the channel stays English-primary.
+Shorts are cut **loop-friendly**: the composition ends exactly where the narration ends (`OUTRO_SEC = 0`, no end card), so the Short restarts mid-curiosity — replay rate is a Shorts ranking signal. They open with a **kinetic hook** so they don't read like a recited article: a badge stinger, a per-word headline cascade, a snap-zoom on the first clip, and an overshoot pop on the active karaoke word — all transform/opacity only. They also cut **faster than the long-form** (`SHORTS_CLIP_SEC = 3.4` vs `BROLL_CLIP_SEC = 5`, ~50% more cuts), and the script prompt forces the opening spoken line into a tight **said-aloud hook** (short, single clause, present tense) rather than prose. The long-video funnel lives in the description's `▶ Full video:` link. Long-form metadata is also localized (title + blurb) into **es/pt/hi/id/fr/de/ja** as discovery metadata; the channel stays English-primary.
 
 ## Repo layout
 

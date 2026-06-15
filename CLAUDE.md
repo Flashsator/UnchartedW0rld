@@ -215,15 +215,42 @@ silently resets every run.
   over the final ~1.2s (`loopBackOpacity`, gated `!hasOutro` so it never fights
   the reversible end card), so the seam lands back on the hook and re-arms the
   curiosity gap on replay. The hook card itself is tuned for the swipe-decision
-  moment: a near-hard cut-in (3-frame fade, not ~0.3s up from black, so frame 0
-  is footage), a transform-only entrance pop/lift that settles by frame 12, and a
-  length-aware hold (`hookHoldSec` ≈ chars/13, floored 2.4s / capped 4.6s) so a
-  short punch clears fast while a 3-line hook gets read. The pop/lift are clamped
-  to rest at scale 1 / no offset, so they never re-animate during the tail
-  loop-back re-fade. The opener is also front-loaded: the Shorts-cut prompt rule
-  makes sections 3/5's FIRST narration sentence the section's biggest
-  scroll-stopping hook — framed as a TEASE, never the payoff, so the no-spoiler
-  chapter rule and invariant #1 still hold.
+  moment as a **kinetic opener** (Shorts feel like a recited article without it):
+  a near-hard cut-in (3-frame fade, not ~0.3s up from black, so frame 0 is
+  footage), a yellow series **badge stinger** (`badgeIn`/`badgeScale`, settles by
+  frame 10), the headline rendered as a **per-word cascade** (each word fades +
+  rises in narration order, `CASCADE_WINDOW`/`WORD_RISE`, completes ~frame 23),
+  the FIRST b-roll clip getting a centered **snap-zoom** (`KenBurnsClip isFirst`,
+  1.26→~1.12, with a `durationInFrames <= 12` two-point guard so the interpolate
+  range stays strictly increasing), and a length-aware hold (`hookHoldSec` ≈
+  chars/13, floored 2.4s / capped 4.6s) so a short punch clears fast while a
+  longer hook gets read. All of this is transform/opacity only, and every stage
+  is clamped to rest (badge scale 1, words at full opacity/no lift), so the tail
+  loop-back re-fade shows a **settled static block** and nothing re-animates
+  there — the cascade only replays when the loop restarts from frame 0 (which
+  re-grabs the eye, by design). The old `-webkit-line-clamp:3` was dropped (it
+  would crop the per-word `translateY` entrance); the title stays a tidy ~2-line
+  block purely via the upstream `compactHook` ≤`CARD_HOOK_MAX_CHARS` (60-char)
+  cap, so don't reintroduce a clamp without re-checking the cascade. The Shorts
+  caption (`SubtitleOverlay.tsx`, vertical variant only) lights the active
+  karaoke word with an **overshoot pop** (0.82→1.08→1) so the highlight reads as
+  a beat; the long-form caption path stays calm/uniform-white. The opener is also
+  front-loaded: the Shorts-cut prompt rule makes sections 3/5's FIRST narration
+  sentence the section's biggest scroll-stopping hook — framed as a TEASE, never
+  the payoff, so the no-spoiler chapter rule and invariant #1 still hold — and a
+  **SPOKEN-HOOK FORM** sub-rule requires that sentence to read like a line a
+  person actually *says* (short, mostly a single clause, present tense, ~14 words
+  max), not documentary prose, since the Shorts audio is reused verbatim from the
+  long-form section and that prompt is the only lever on its spoken cadence.
+- **Shorts cut faster than the long-form (by design):** `SHORTS_CLIP_SEC = 3.4`
+  in `src/config.ts` (the long-form `BROLL_CLIP_SEC` stays 5) — a vertical,
+  muted, fast-scrolled feed rewards energy, so the same narration gets ~50% more
+  cuts. It drives BOTH the portrait-clip fetch quota (`fetchShortsBroll`'s
+  `needed` in `src/stock.ts`) and the Short's `clipQuota` in `pipeline.ts`. The
+  extra clips still pass the same relevance ranking and the portrait 1280px hard
+  floor (invariant #3 holds); the rare landscape-fallback path (<2 portrait clips
+  found) inherits the faster cadence by center-cropping the relevant long-section
+  clips, which stays on-subject. Don't relax the floor to chase the quota.
 - **Schedule:** `PUBLISH_WEEKDAYS_UTC = [1,3,5]`; `WEEKDAY_SERIES_MAP` = Mon→animals,
   Wed→insects, Fri→plants. The run is *triggered* at 13:00 UTC but each long video
   is *scheduled public* at `PUBLISH_HOUR_UTC` = **19:00 UTC** (the US-afternoon
