@@ -13,29 +13,38 @@ type SubtitleOverlayProps = {
 // end-card highlight elsewhere in the short).
 const HIGHLIGHT = '#FFE94A';
 
-// Long-form captions are forced onto a single line (no wrap). The 1920px-wide
-// frame at ~92% width fits ~50 chars at the base size, and 4-word cues are
-// almost always shorter, so the base size is held for the overwhelming
-// majority. The step-downs only kick in for the rare extra-long cue, purely as
-// an overflow safety net.
-function horizontalFontSize(text: string): number {
-  const len = text.trim().length;
-  if (len <= 48) return 60;
-  if (len <= 56) return 52;
-  return 46;
-}
+// Both layouts force the cue onto a single line (no wrap). A coarse
+// character-count bucket used to pick the size, but `maxWidth` does NOT shrink
+// `nowrap` content — it only caps the box, so a long or wide-glyph 4-word cue
+// (common on the narrow 1080px Shorts frame) spilled past the edge and clipped.
+// Instead, derive the size from the actual pixel budget: estimate the rendered
+// line width (glyph advance + per-letter tracking + inter-word gaps) and shrink
+// the font until the line fits the usable width, clamped to a readable floor
+// and the design-max so short cues stay big and punchy.
+//
+// Conservative em-advance for Inter weight 800 in sentence case; pairs with the
+// `WIDTH_SAFETY` headroom below to absorb above-average-width cues and the
+// active word's karaoke pop without ever overflowing.
+const GLYPH_ADVANCE_RATIO = 0.56;
+const WIDTH_SAFETY = 0.94;
 
-// Shorts captions are also kept to a single line. The portrait frame is only
-// 1080px wide, so the base 82px only fits short cues; the size steps down as
-// the cue gets longer so a 4-word cue still lands on one line at ~92% width.
-// Short cues keep the big, punchy size.
-function verticalFontSize(text: string): number {
-  const len = text.trim().length;
-  if (len <= 22) return 82;
-  if (len <= 28) return 70;
-  if (len <= 34) return 60;
-  if (len <= 40) return 52;
-  return 46;
+type FitParams = {
+  frameWidth: number;
+  designMax: number;
+  floor: number;
+  columnGap: number;
+  letterSpacing: number;
+  widthPct: number;
+};
+
+function fitFontSize(cueWords: WordTiming[], p: FitParams): number {
+  const glyphs = cueWords.reduce((n, w) => n + w.text.trim().length, 0);
+  if (glyphs === 0) return p.designMax;
+  const gaps = Math.max(0, cueWords.length - 1) * p.columnGap;
+  const usable = p.frameWidth * p.widthPct * WIDTH_SAFETY - gaps;
+  // usable >= glyphs * (GLYPH_ADVANCE_RATIO * size + letterSpacing) → solve size
+  const size = (usable - glyphs * p.letterSpacing) / (glyphs * GLYPH_ADVANCE_RATIO);
+  return Math.max(p.floor, Math.min(p.designMax, Math.floor(size)));
 }
 
 // The active word is the last one that has started. Holding the most recent
@@ -52,7 +61,7 @@ function activeWordIndex(cueWords: WordTiming[], t: number): number {
 
 export function SubtitleOverlay({ words, variant = 'horizontal' }: SubtitleOverlayProps) {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, width } = useVideoConfig();
   const t = frame / fps;
   const cues: Cue[] = chunkWords(words);
 
@@ -71,10 +80,18 @@ export function SubtitleOverlay({ words, variant = 'horizontal' }: SubtitleOverl
 
   const isVertical = variant === 'vertical';
   const topPct = isVertical ? '60%' : '80%';
-  // Both layouts force a single line (no wrap). The font auto-shrinks per cue
-  // so even a long 4-word cue fits one line within the box width.
-  const maxWidth = isVertical ? '92%' : '92%';
-  const fontSize = isVertical ? verticalFontSize(active.text) : horizontalFontSize(active.text);
+  // Both layouts force a single line (no wrap). The font is sized to the real
+  // pixel budget per cue so even a long 4-word cue fits one line within the box.
+  const widthPct = 0.92;
+  const columnGap = isVertical ? 18 : 14;
+  const fontSize = fitFontSize(active.words, {
+    frameWidth: width,
+    designMax: isVertical ? 82 : 60,
+    floor: isVertical ? 34 : 38,
+    columnGap,
+    letterSpacing: 0.4,
+    widthPct,
+  });
   const strokeWidth = isVertical ? '3px' : '2px';
 
   const activeIdx = activeWordIndex(active.words, t);
@@ -87,7 +104,7 @@ export function SubtitleOverlay({ words, variant = 'horizontal' }: SubtitleOverl
           left: '50%',
           top: topPct,
           transform: `translate(-50%, ${lift}px)`,
-          maxWidth,
+          maxWidth: `${widthPct * 100}%`,
           opacity: fade,
           display: 'flex',
           // Never wrap — both layouts keep the cue on a single line (the font
@@ -95,7 +112,7 @@ export function SubtitleOverlay({ words, variant = 'horizontal' }: SubtitleOverl
           flexWrap: 'nowrap',
           justifyContent: 'center',
           alignItems: 'baseline',
-          columnGap: isVertical ? 18 : 14,
+          columnGap,
           rowGap: isVertical ? 6 : 4,
         }}
       >
