@@ -101,14 +101,6 @@ jobs:
       - name: Install Remotion Chromium
         run: npx remotion browser ensure
 
-      - name: Install Playwright Chromium (for music scraper)
-        continue-on-error: true
-        run: npx playwright install --with-deps chromium
-
-      - name: Refresh Pixabay music library
-        continue-on-error: true
-        run: npm run scrape:music
-
       # Anti-repeat rotation state (tone / thumbnail layout / BGM) lives in work/.
       # Runners are ephemeral, so without this the variety logic resets every run.
       # Rolling key: unique per run (always saves a fresh snapshot in the post step),
