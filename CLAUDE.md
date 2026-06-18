@@ -319,7 +319,10 @@ silently resets every run.
   `VOICE_ID`, `SECTION_COUNT`, `TARGET_MINUTES`, `FORCE_RUN`, `TEST_MODE`,
   `FLUX_STEPS`, `REMOTION_CONCURRENCY`; growth-automation gates (all default
   OFF locally, `'1'` in `daily.yml`): `ENABLE_ANALYTICS_FEEDBACK`,
-  `ENABLE_TOPIC_VALIDATION`, `ENABLE_AUTO_COMMENT`, `ENABLE_CTR_RESCUE`.
+  `ENABLE_TOPIC_VALIDATION`, `ENABLE_AUTO_COMMENT`, `ENABLE_CTR_RESCUE`,
+  `ENABLE_CONTENT_AUDIT`, `ENABLE_BROLL_CARDS` (explainer-card b-roll fallback,
+  invariant #3; tune with `BROLL_CARD_MAX_PER_SECTION` / `BROLL_CARD_OFFSUBJECT_RATIO`,
+  per-series accent hex in `SERIES_ACCENTS` in `src/config.ts`).
 
 ## Conventions
 
