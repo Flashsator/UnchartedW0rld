@@ -92,6 +92,31 @@ export type BrollClip = {
   duration: number;
   width: number;
   height: number;
+  // Provider metadata/slug used for relevance (Pixabay tags / Pexels page slug /
+  // Coverr title), threaded through from StockCandidate.meta. Absent when the
+  // provider exposed no per-clip text, and for synthesized Ken Burns stills.
+  meta?: string;
+  // Whether the episode `subject` token was present in `meta` (or the clip is a
+  // Commons/Unsplash still, which are title-matched to the subject → true).
+  // `false` means PROVEN off-subject (had metadata, none of the subject tokens
+  // appeared); `undefined` means unknown (no metadata) and is left alone — the
+  // explainer-card decider only ever replaces a clip it can prove is off-subject.
+  onSubject?: boolean;
+};
+
+// A self-generated, full-frame motion-graphic "explainer card" that replaces ONE
+// b-roll slot when no on-subject footage exists for it. Built only from the
+// section's own narration so it never fabricates data (invariant #1): a stat card
+// surfaces a figure that is actually spoken in that section; a fact card shows a
+// clause lifted verbatim from the narration.
+export type BrollCard = {
+  kind: 'stat' | 'fact';
+  // stat: the spoken figure ("47%"); fact: the key narration clause.
+  headline: string;
+  // stat: the section label line; fact: the subject name.
+  caption?: string;
+  // Series accent hex (optional; defaults to the brand yellow).
+  accent?: string;
 };
 
 export type SubtitleCue = {
@@ -150,6 +175,10 @@ export type RenderManifest = {
     words: WordTiming[];
     iconEvents: IconEvent[];
     overlays?: SectionOverlay[];
+    // Index-aligned to brollPaths: when shotCards[i] is set, SectionScene
+    // renders a self-built FactCard in that slot instead of the (proven
+    // off-subject) clip. Absent/empty leaves every slot as real footage.
+    shotCards?: (BrollCard | null)[];
   }>;
   interludes: Interlude[];
   // watchNextTitle: the channel's best-performing past video title (from the

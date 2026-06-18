@@ -144,6 +144,10 @@ export type BrollFetchOpts = {
   // fuzzy matcher to the right corner of its library so a thin query degrades
   // to on-theme footage instead of arbitrary scenery.
   pixabayCategory?: string;
+  // The episode subject (anchorVisual's subject noun). When set, each downloaded
+  // clip is tagged onSubject by matching its provider metadata against this — the
+  // signal the explainer-card decider uses to prove a slot is off-subject.
+  subject?: string;
 };
 
 // One downloadable search result, normalized across providers.
@@ -240,6 +244,24 @@ function relevanceTokens(text: string): string[] {
     .split(/[^a-z0-9]+/)
     .filter((t) => t.length >= 3)
     .map((t) => (t.length > 3 && t.endsWith('s') ? t.slice(0, -1) : t));
+}
+
+// Whether a downloaded clip can be PROVEN on- or off-subject from its provider
+// metadata. Returns `true` when a subject token appears in the clip's metadata,
+// `false` when the metadata exists but names none of the subject tokens (proven
+// off-subject), and `undefined` when there's nothing to judge on (no metadata or
+// no subject) — absence of evidence, left alone by the card decider. Reuses the
+// same tokenizer as the relevance filter so the two paths agree. Pure and
+// exported for testing.
+export function isClipOnSubject(
+  meta: string | undefined,
+  subject: string | undefined,
+): boolean | undefined {
+  if (!meta || !subject) return undefined;
+  const subjectTokens = relevanceTokens(subject);
+  if (subjectTokens.length === 0) return undefined;
+  const metaTokens = new Set(relevanceTokens(meta));
+  return subjectTokens.some((t) => metaTokens.has(t));
 }
 
 // Drops candidates whose own metadata provably mismatches the query, and floats
@@ -593,7 +615,9 @@ async function makeKenBurnsClip(
       fs.existsSync(dest) && fs.unlinkSync(dest);
       return null;
     }
-    return { path: dest, duration: dur, width: VIDEO_W, height: VIDEO_H };
+    // Commons/Unsplash stills are fetched by title/keyword match to the actual
+    // subject, so they are on-subject by construction — never a card candidate.
+    return { path: dest, duration: dur, width: VIDEO_W, height: VIDEO_H, onSubject: true };
   } catch (e) {
     log(`Ken Burns clip failed: ${(e as Error).message}`);
     return null;
@@ -681,8 +705,9 @@ async function downloadVideoClips(
   const merged = interleaveRoundRobin(groups).filter((c) => !usedUrls.has(c.url));
   const pool = orderPoolByPreference(merged);
   let added = 0;
-  for (const { url, source } of pool) {
+  for (const cand of pool) {
     if (added >= remaining) break;
+    const { url, source } = cand;
     try {
       const name = safeFilename(`${query}_${brollSeq++}_${Date.now()}.mp4`);
       const dest = path.join(cacheDir, name);
@@ -699,6 +724,8 @@ async function downloadVideoClips(
         duration: dur,
         width: orientation === 'portrait' ? 1080 : 1920,
         height: orientation === 'portrait' ? 1920 : 1080,
+        meta: cand.meta,
+        onSubject: isClipOnSubject(cand.meta, opts.subject),
       });
       added++;
     } catch (e) {

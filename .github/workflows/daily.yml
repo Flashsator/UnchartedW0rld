@@ -177,6 +177,14 @@ jobs:
           ENABLE_CTR_RESCUE: '1'
           ENABLE_TOPIC_VALIDATION: '1'
           ENABLE_CONTENT_AUDIT: '1'
+          # Last-resort b-roll fallback: when a long-form shot slot's clip is
+          # PROVEN off-subject (provider metadata shares no token with the
+          # subject), replace just that slot with a self-built full-frame
+          # explainer card built from THAT section's own narration (stat card
+          # for a spoken figure, else a verbatim fact clause — invariant #1
+          # holds). Capped, conservative, long-form only; OFF locally so a push
+          # never flips live behaviour on its own.
+          ENABLE_BROLL_CARDS: '1'
           SERIES_KEY: ${{ inputs.series_key }}
           SUB_THEME: ${{ inputs.sub_theme }}
           STRUCTURE_KEY: ${{ inputs.structure_key }}

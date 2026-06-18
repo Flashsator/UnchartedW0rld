@@ -8,6 +8,7 @@ import {
   useVideoConfig,
 } from 'remotion';
 import type { RenderManifest, WordTiming } from '../../src/types';
+import { FactCard } from './FactCard';
 import { IconOverlay } from './IconOverlay';
 import { OverlayLayer } from './OverlayLayer';
 import { SubtitleOverlay } from './SubtitleOverlay';
@@ -200,6 +201,18 @@ export function SectionScene({ section, index, sectionCount }: SectionSceneProps
         const nextStart =
           i + 1 < cutTimes.length ? Math.round(cutTimes[i + 1]! * fps) : sectionFrames;
         const durFrames = Math.max(1, nextStart - startFrame);
+        // A slot the planner proved off-subject is replaced by a self-built
+        // explainer card instead of shipping unrelated footage. The card text
+        // is lifted from this section's narration upstream, so no Ken Burns
+        // clip / letterbox here — the card is the whole frame.
+        const card = section.shotCards?.[i];
+        if (card) {
+          return (
+            <Sequence key={i} from={startFrame} durationInFrames={durFrames}>
+              <FactCard spec={card} />
+            </Sequence>
+          );
+        }
         const motion = kenBurnsFor(i, index);
         const treatment = treatments[i]!;
         return (

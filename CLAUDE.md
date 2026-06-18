@@ -92,6 +92,27 @@ heartbeat monitor).
    portrait Shorts b-roll, which keeps a 1280px hard floor because
    center-cropping a relevant 1080p landscape clip (the guaranteed fallback)
    is sharper than a soft portrait file.
+   **Explainer-card last resort (`ENABLE_BROLL_CARDS`, `'1'` in daily.yml, OFF
+   locally).** Below even the Commons safety net, when a long-form shot slot's
+   clip is *proven* off-subject — its provider metadata shares no token with the
+   episode `subject`, tagged `onSubject === false` by `isClipOnSubject` in
+   `src/stock.ts` — that one slot is replaced by a self-built, full-frame
+   Remotion motion-graphic **explainer card** (`remotion/scenes/FactCard.tsx`)
+   instead of shipping footage that contradicts the narration. The pure decider
+   is `planShotCards` in `src/brollCards.ts` (unit-tested in
+   `test/brollCards.test.ts`). It is deliberately conservative and must stay so:
+   it cards a slot ONLY on `onSubject === false` (never `undefined` — no metadata
+   to judge means leave the footage), at most `BROLL_CARD_MAX_PER_SECTION` (2)
+   cards per section, never the cold-open slot 0, and bails the whole section to
+   all-footage if MORE than `BROLL_CARD_OFFSUBJECT_RATIO` (0.5) of slots are
+   off-subject (that's an unfilmable subject — an invariant #3 smell to fix
+   upstream, not paper over with a wall of cards). **Invariant #1 extends to the
+   card text:** it is lifted only from THAT section's narration in the slot's
+   time window — a spoken figure makes a `stat` card (count-up), otherwise a
+   verbatim clause makes a `fact` card; nothing is ever reworded or fabricated.
+   Long-form only (Shorts untouched); render-side, no new state file. This is a
+   safety net, NOT a strategy — a real on-subject clip always wins; the goal is
+   that a bad slot degrades to a clean designed card, never to off-topic scenery.
 4. **Length is mandatory.** Scripts target ~`TARGET_MINUTES` (9.5–10 min) so the
    final cut clears 8:00 for YouTube mid-roll ads. There's a word-count floor in
    the script prompt; don't lower it.

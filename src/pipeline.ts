@@ -46,9 +46,11 @@ import { autoCommentOnRecentVideos } from './engage.js';
 import { rescueWorstPackaging } from './ctrRescue.js';
 import { auditRecentContent } from './contentAudit.js';
 import { extractIconEvents } from './iconExtractor.js';
+import { planShotCards } from './brollCards.js';
 import { computeCutTimes, sectionClipSeconds } from './cuts.js';
 import { buildShortsManifest, planShortsForToday, publishAtFor } from './shortsGen.js';
 import type {
+  BrollCard,
   Episode,
   ImageCredit,
   Interlude,
@@ -168,6 +170,11 @@ async function main(): Promise<void> {
   // obscure subject). Threaded into the description's attribution block.
   const imageCredits: ImageCredit[] = [];
   const broll: string[][] = [];
+  // Cut times and explainer cards are computed once per section here (the
+  // planner needs the same cutTimes the manifest ships, and the clip objects'
+  // onSubject tags) and reused when the manifest is assembled below.
+  const cutTimesBySection: number[][] = [];
+  const shotCardsBySection: (BrollCard | null)[][] = [];
   for (let i = 0; i < sectionAudios.length; i++) {
     const sec = sectionAudios[i]!;
     // Ordered per-beat shot list (subject-anchored in scriptGen) so footage
@@ -187,10 +194,29 @@ async function main(): Promise<void> {
       used,
       footageUsed,
       imageCredits,
-      { pixabayCategory },
+      { pixabayCategory, subject: episode.subject },
       clipSec,
     );
-    broll.push(clips.map((c) => relAsset(runDir, c.path)));
+    const paths = clips.map((c) => relAsset(runDir, c.path));
+    const totalSec = sec.duration + INTER_SECTION_GAP_SEC;
+    const cutTimes = computeCutTimes(sec.words, totalSec, paths.length);
+    // Last-resort fallback: replace any slot proven off-subject with a self-
+    // built explainer card drawn from this section's own narration. Gated by
+    // ENABLE_BROLL_CARDS (OFF locally) and conservative caps; returns all-null
+    // when the gate is off or nothing qualifies, so footage is unchanged.
+    const shotCards = planShotCards({
+      clips,
+      words: sec.words,
+      cutTimes,
+      totalSec,
+      heading: sec.heading,
+      subject: episode.subject,
+      seriesKey: series.key,
+      isColdOpenSection: i === 0,
+    });
+    broll.push(paths);
+    cutTimesBySection.push(cutTimes);
+    shotCardsBySection.push(shotCards);
   }
 
   const interludeCount = sectionAudios.length >= 3
@@ -284,14 +310,11 @@ async function main(): Promise<void> {
       duration: s.duration,
       gapAfterSec: INTER_SECTION_GAP_SEC,
       brollPaths: broll[i]!,
-      cutTimes: computeCutTimes(
-        s.words,
-        s.duration + INTER_SECTION_GAP_SEC,
-        broll[i]!.length,
-      ),
+      cutTimes: cutTimesBySection[i]!,
       words: s.words,
       iconEvents: extractIconEvents(s.words, `${s.heading} ${s.visual}`),
       overlays: episode.sections[i]?.overlays,
+      shotCards: shotCardsBySection[i]!,
     })),
     interludes,
     outro: { durationSec: OUTRO_SUBSCRIBE_SEC, watchNextTitle: winningTitles[0] },

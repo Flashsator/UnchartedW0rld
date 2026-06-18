@@ -134,6 +134,36 @@ export const CONTENT_AUDIT_LOG_FILE = path.join(WORK_DIR, '.content-audit.log');
 // How many most-recent uploads to feed the auditor (titles + hooks + tags).
 export const CONTENT_AUDIT_RECENT_COUNT = Number(process.env.CONTENT_AUDIT_RECENT_COUNT ?? 8);
 
+// --- B-roll explainer cards (opt-in) ------------------------------------------
+// When ENABLE_BROLL_CARDS=1, a long-form b-roll slot that is PROVEN off-subject
+// (the downloaded clip carried provider metadata, none of which named the
+// episode subject) is replaced by a self-built, full-frame Remotion motion-
+// graphic "explainer card" instead of shipping an unrelated clip. The card text
+// is lifted only from that section's OWN narration, so invariant #1 (no
+// fabricated data) holds: a stat card surfaces a figure actually spoken in the
+// section; a fact card shows a clause lifted verbatim. Long-form ONLY (Shorts
+// unchanged). OFF by default locally; '1' in daily.yml so it only affects live
+// once pushed. Conservative caps below keep a section from going text-heavy.
+export const ENABLE_BROLL_CARDS = process.env.ENABLE_BROLL_CARDS === '1';
+// Hard ceiling on how many slots in one section may become cards, so even a
+// badly-matched section keeps mostly real footage.
+export const BROLL_CARD_MAX_PER_SECTION = Number(process.env.BROLL_CARD_MAX_PER_SECTION ?? 2);
+// If MORE than this fraction of a section's slots are proven off-subject, the
+// subject itself is effectively unfilmable (an invariant #3 smell) — the decider
+// bails on the whole section rather than paper over it with a wall of cards.
+export const BROLL_CARD_OFFSUBJECT_RATIO = Number(process.env.BROLL_CARD_OFFSUBJECT_RATIO ?? 0.5);
+// Default card accent (brand yellow) when a series has no specific accent.
+export const BROLL_CARD_DEFAULT_ACCENT = '#FFE94A';
+// Per-series accent hex for the card's kicker + rule. Keyed by series key.
+export const SERIES_ACCENTS: Record<string, string> = {
+  animals: '#FFE94A',
+  insects: '#9AE66E',
+  plants: '#6ED6A8',
+};
+export function accentForSeries(seriesKey: string): string {
+  return SERIES_ACCENTS[seriesKey] ?? BROLL_CARD_DEFAULT_ACCENT;
+}
+
 // Appended to every long-form description (after chapters, before attribution)
 // so each video carries a consistent channel pitch + subscribe CTA. The
 // ?sub_confirmation=1 link only opens the subscribe prompt on a /channel/UC...
