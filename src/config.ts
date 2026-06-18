@@ -152,13 +152,15 @@ export const BROLL_CARD_MAX_PER_SECTION = Number(process.env.BROLL_CARD_MAX_PER_
 // subject itself is effectively unfilmable (an invariant #3 smell) — the decider
 // bails on the whole section rather than paper over it with a wall of cards.
 export const BROLL_CARD_OFFSUBJECT_RATIO = Number(process.env.BROLL_CARD_OFFSUBJECT_RATIO ?? 0.5);
-// Default card accent (brand yellow) when a series has no specific accent.
-export const BROLL_CARD_DEFAULT_ACCENT = '#FFE94A';
+// Default card accent (amber) when a series has no specific accent.
+export const BROLL_CARD_DEFAULT_ACCENT = '#FFC24A';
 // Per-series accent hex for the card's kicker + rule. Keyed by series key.
+// Deliberately well-separated on the hue wheel (amber / lime / emerald) so the
+// three series read distinctly against the neutral charcoal card base.
 export const SERIES_ACCENTS: Record<string, string> = {
-  animals: '#FFE94A',
-  insects: '#9AE66E',
-  plants: '#6ED6A8',
+  animals: '#FFC24A',
+  insects: '#B6F23D',
+  plants: '#34D399',
 };
 export function accentForSeries(seriesKey: string): string {
   return SERIES_ACCENTS[seriesKey] ?? BROLL_CARD_DEFAULT_ACCENT;

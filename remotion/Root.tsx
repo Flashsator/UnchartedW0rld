@@ -45,14 +45,14 @@ const PREVIEW_FACT_CARD: BrollCard = {
   kind: 'fact',
   headline: 'It can survive temperatures that would freeze most life',
   caption: 'Tardigrade',
-  accent: '#FFE94A',
+  accent: '#FFC24A',
 };
 
 const PREVIEW_STAT_CARD: BrollCard = {
   kind: 'stat',
   headline: '1,200',
   caption: 'Years Without Water',
-  accent: '#6ED6A8',
+  accent: '#34D399',
 };
 
 function isShortsManifest(m: RenderManifest | ShortsManifest | undefined): m is ShortsManifest {

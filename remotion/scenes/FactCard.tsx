@@ -9,7 +9,7 @@ import { animatedStatText } from '../lib/countUp';
 // so this component never invents data — it only animates a figure or clause it
 // was handed. All motion is transform/opacity only (compositor-friendly).
 
-const DEFAULT_ACCENT = '#FFE94A';
+const DEFAULT_ACCENT = '#FFC24A';
 const FONT = '"Inter", "Helvetica Neue", system-ui, sans-serif';
 
 // rgba() from a #RRGGBB hex so the accent can tint backgrounds at low alpha.
@@ -78,7 +78,7 @@ export function FactCard({ spec }: { spec: BrollCard }) {
   const factWords = isStat ? [] : spec.headline.split(/\s+/).filter(Boolean);
 
   return (
-    <AbsoluteFill style={{ backgroundColor: '#0c0f0d' }}>
+    <AbsoluteFill style={{ backgroundColor: '#0A0C0E' }}>
       {/* Accent-tinted wash so the card reads as part of the series palette. */}
       <AbsoluteFill
         style={{
