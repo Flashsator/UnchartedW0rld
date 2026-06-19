@@ -127,9 +127,25 @@ heartbeat monitor).
    card text:** it is lifted only from THAT section's narration in the slot's
    time window — a spoken figure makes a `stat` card (count-up), otherwise a
    verbatim clause makes a `fact` card; nothing is ever reworded or fabricated.
-   Long-form only (Shorts untouched); render-side, no new state file. This is a
-   safety net, NOT a strategy — a real on-subject clip always wins; the goal is
-   that a bad slot degrades to a clean designed card, never to off-topic scenery.
+   The `fact` card RENDERS as a tiny **schematic** chosen by how many subjects the
+   verbatim clause names (`collectCardIcons` in `src/iconDict.ts`, the pure
+   layout decider): **2 distinct subject emoji → a relation diagram** (two ringed
+   subject nodes + a connector that draws in + a travelling A→B pulse + arrowhead
+   — for process beats like "the wasp paralyses the caterpillar"), **1 → a focal
+   node** (emoji in an accent ring + concentric pulse rings), **0 → an editorial
+   text card** (key word accented). The emoji are DECORATIVE only — they depict a
+   subject the verbatim text already names and add no data (invariant #1 holds);
+   the arrow follows narration order and asserts no new claim. `ICON_DICT` lists
+   only faithful glyphs — a subject with no accurate emoji (wasp, moth) is
+   deliberately ABSENT so the card degrades to the text layout, never a wrong
+   creature. Note `ICON_DICT` is ALSO consumed by `src/iconExtractor.ts`
+   (the always-on in-frame overlay-emoji path, independent of this gate), so
+   broadening it affects live overlays too — but that path only fires when the
+   matched word also appears in the section heading/visual context, so it can't
+   fabricate. Long-form only (Shorts untouched); render-side, no new state file.
+   This is a safety net, NOT a strategy — a real on-subject clip always wins; the
+   goal is that a bad slot degrades to a clean designed card, never off-topic
+   scenery.
 4. **Length is mandatory.** Scripts target ~`TARGET_MINUTES` (9.5–10 min) so the
    final cut clears 8:00 for YouTube mid-roll ads. There's a word-count floor in
    the script prompt; don't lower it.
