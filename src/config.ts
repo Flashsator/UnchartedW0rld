@@ -166,6 +166,26 @@ export function accentForSeries(seriesKey: string): string {
   return SERIES_ACCENTS[seriesKey] ?? BROLL_CARD_DEFAULT_ACCENT;
 }
 
+// --- B-roll vision QA (opt-in) ------------------------------------------------
+// When ENABLE_BROLL_VISION_QA=1, the PRIMARY downloaded clip of each long-form
+// beat is verified by the script CLI's vision: a midpoint frame is shown to the
+// model with the beat's shot query, and a clip the model CLEARLY judges
+// off-subject is dropped so the next candidate is tried. This closes the gap the
+// metadata-only relevance filter can't see — provider tags/slugs are thin and
+// sometimes wrong, so a clip can pass the text filter yet show the wrong thing
+// (the narration/visual mismatch viewers notice). Best-effort/non-fatal:
+// disabled, any infra error (no CLI, ffmpeg missing, timeout), or an ambiguous
+// verdict all KEEP the clip, so the gate never ships worse footage than the
+// metadata-only pipeline would have. Long-form (landscape) only — Shorts
+// center-crop the already-verified long clips. OFF by default locally; '1' in
+// daily.yml so it only affects live once pushed. No new state file (fetch-time
+// only), so unlike the card/audit state it needs no rotation-state cache entry.
+export const ENABLE_BROLL_VISION_QA = process.env.ENABLE_BROLL_VISION_QA === '1';
+// Max candidates to vision-check per beat before accepting the next one WITHOUT
+// QA, so a genuinely hard-to-match beat is never starved into stills by a picky
+// model. Once one clip passes, this beat's remaining fills are trusted.
+export const BROLL_VISION_QA_MAX_CHECKS = Number(process.env.BROLL_VISION_QA_MAX_CHECKS ?? 2);
+
 // Appended to every long-form description (after chapters, before attribution)
 // so each video carries a consistent channel pitch + subscribe CTA. The
 // ?sub_confirmation=1 link only opens the subscribe prompt on a /channel/UC...

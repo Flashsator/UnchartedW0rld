@@ -185,6 +185,13 @@ jobs:
           # holds). Capped, conservative, long-form only; OFF locally so a push
           # never flips live behaviour on its own.
           ENABLE_BROLL_CARDS: '1'
+          # Relevance gate on selection: the primary clip of each long-form beat
+          # is vision-checked (a midpoint frame + the shot query → the script
+          # CLI's vision) and dropped if CLEARLY off-subject, so the next
+          # candidate is tried. Closes the gap the metadata-only filter can't see
+          # (thin/wrong provider tags). Best-effort/non-fatal — disabled, any
+          # infra error or an ambiguous verdict keeps the clip; long-form only.
+          ENABLE_BROLL_VISION_QA: '1'
           SERIES_KEY: ${{ inputs.series_key }}
           SUB_THEME: ${{ inputs.sub_theme }}
           STRUCTURE_KEY: ${{ inputs.structure_key }}

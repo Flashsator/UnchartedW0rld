@@ -4,7 +4,9 @@ import {
   ASSETS_DIR,
   BROLL_CLIP_SEC,
   BROLL_MIN_HEIGHT,
+  BROLL_VISION_QA_MAX_CHECKS,
   COVERR_API_KEY,
+  ENABLE_BROLL_VISION_QA,
   PEXELS_API_KEY,
   PIXABAY_API_KEY,
   SHORTS_CLIP_SEC,
@@ -14,6 +16,7 @@ import {
   VIDEO_W,
   WORK_DIR,
 } from './config.js';
+import { visionRejectsClip } from './brollVision.js';
 import type { BrollClip, ImageCredit, MusicCredit } from './types.js';
 import {
   downloadFile,
@@ -149,6 +152,12 @@ export type BrollFetchOpts = {
   // signal the explainer-card decider uses to prove a slot is off-subject.
   subject?: string;
 };
+
+// Mutable per-beat vision-QA budget. `checks` counts how many candidates this
+// beat has vision-checked (capped at BROLL_VISION_QA_MAX_CHECKS); `passed` flips
+// once one clip clears QA, after which the beat's remaining fills are trusted.
+// Threaded through a beat's query variants so the cap is a true per-beat ceiling.
+type BrollQaBudget = { checks: number; passed: boolean };
 
 // One downloadable search result, normalized across providers.
 export type StockCandidate = {
@@ -678,6 +687,9 @@ export function orderPoolByPreference(candidates: StockCandidate[]): StockCandid
 
 // Downloads up to `remaining` distinct video clips for ONE concrete query string
 // (no relaxation here) from the three video providers, deduping against usedUrls.
+// `qaState` carries the vision-QA budget for ONE beat across its relaxed-query
+// variants, so the cap is a true per-beat ceiling rather than resetting each
+// time the query broadens (see fetchClipsForQuery).
 async function downloadVideoClips(
   query: string,
   remaining: number,
@@ -686,6 +698,7 @@ async function downloadVideoClips(
   sourcesUsed: Set<string> | undefined,
   clips: BrollClip[],
   opts: BrollFetchOpts = {},
+  qaState: BrollQaBudget = { checks: 0, passed: false },
 ): Promise<void> {
   if (remaining <= 0) return;
   const orientation = opts.orientation ?? 'landscape';
@@ -705,6 +718,15 @@ async function downloadVideoClips(
   const merged = interleaveRoundRobin(groups).filter((c) => !usedUrls.has(c.url));
   const pool = orderPoolByPreference(merged);
   let added = 0;
+  // Vision QA verifies this beat's PRIMARY shot actually depicts the query —
+  // metadata can be thin or wrong, so a clip can pass the text filter yet show
+  // the wrong thing. Once one clip passes we trust the rest of this beat's fills,
+  // and the check count is capped PER BEAT (qaState is shared across the beat's
+  // query variants) so a hard-to-match beat is never starved into stills by a
+  // picky model. Long-form (landscape) only; Shorts center-crop the already-
+  // verified long clips. Best-effort: when disabled or on any infra error
+  // visionRejectsClip returns false, so the loop behaves exactly as before.
+  const qaEligible = ENABLE_BROLL_VISION_QA && orientation === 'landscape';
   for (const cand of pool) {
     if (added >= remaining) break;
     const { url, source } = cand;
@@ -716,6 +738,15 @@ async function downloadVideoClips(
       if (dur < 2) {
         fs.unlinkSync(dest);
         continue;
+      }
+      if (qaEligible && !qaState.passed && qaState.checks < BROLL_VISION_QA_MAX_CHECKS) {
+        qaState.checks++;
+        if (await visionRejectsClip(dest, dur, query)) {
+          fs.unlinkSync(dest);
+          usedUrls.add(url); // proven off-subject — don't re-pick it elsewhere
+          continue;
+        }
+        qaState.passed = true;
       }
       usedUrls.add(url);
       sourcesUsed?.add(source);
@@ -755,6 +786,9 @@ async function fetchClipsForQuery(
 
   const variants = relaxedQueryVariants(query);
   const clips: BrollClip[] = [];
+  // One vision-QA budget for this beat, shared across its query variants so the
+  // cap is per-beat (not reset every time the query broadens).
+  const qaState: BrollQaBudget = { checks: 0, passed: false };
 
   // Video providers, most specific variant first. Stop broadening the moment the
   // section's quota is met so common subjects never widen past the exact shot.
@@ -768,6 +802,7 @@ async function fetchClipsForQuery(
       sourcesUsed,
       clips,
       opts,
+      qaState,
     );
   }
 

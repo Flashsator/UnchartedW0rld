@@ -92,6 +92,23 @@ heartbeat monitor).
    portrait Shorts b-roll, which keeps a 1280px hard floor because
    center-cropping a relevant 1080p landscape clip (the guaranteed fallback)
    is sharper than a soft portrait file.
+   **Vision relevance gate (`ENABLE_BROLL_VISION_QA`, `'1'` in daily.yml, OFF
+   locally).** The metadata filter only reads a provider's tags/slug, which are
+   thin and sometimes wrong — so a clip can pass the text filter yet visually
+   show the wrong thing (the mismatch viewers notice). When enabled, the PRIMARY
+   downloaded clip of each long-form beat is vision-checked: `visionRejectsClip`
+   in `src/brollVision.ts` samples one midpoint frame (ffmpeg) and asks the
+   script-gen Claude CLI's vision (same plumbing as the thumbnail QA) whether it
+   depicts the beat query; a clip judged *clearly* off-subject is dropped and the
+   next candidate tried. **Best-effort/non-fatal and must stay so:** disabled,
+   any infra error (no CLI, ffmpeg missing, timeout), or an ambiguous verdict all
+   KEEP the clip, so it never starves a section below the metadata-only pipeline.
+   It only DROPS on a clear FAIL (conservative prompt) and the per-beat check
+   count is capped (`BROLL_VISION_QA_MAX_CHECKS`, shared across the beat's query
+   variants); once one clip passes, the beat's remaining fills are trusted.
+   Long-form (landscape) only — Shorts center-crop the already-verified long
+   clips. Fetch-time only, no new state file. Pure parts (`visionVerdictIsFail`,
+   `buildVisionPrompt`) unit-tested in `test/brollVision.test.ts`.
    **Explainer-card last resort (`ENABLE_BROLL_CARDS`, `'1'` in daily.yml, OFF
    locally).** Below even the Commons safety net, when a long-form shot slot's
    clip is *proven* off-subject — its provider metadata shares no token with the
@@ -322,7 +339,9 @@ silently resets every run.
   `ENABLE_TOPIC_VALIDATION`, `ENABLE_AUTO_COMMENT`, `ENABLE_CTR_RESCUE`,
   `ENABLE_CONTENT_AUDIT`, `ENABLE_BROLL_CARDS` (explainer-card b-roll fallback,
   invariant #3; tune with `BROLL_CARD_MAX_PER_SECTION` / `BROLL_CARD_OFFSUBJECT_RATIO`,
-  per-series accent hex in `SERIES_ACCENTS` in `src/config.ts`).
+  per-series accent hex in `SERIES_ACCENTS` in `src/config.ts`),
+  `ENABLE_BROLL_VISION_QA` (vision relevance gate on b-roll selection, invariant
+  #3; tune with `BROLL_VISION_QA_MAX_CHECKS`).
 
 ## Conventions
 
