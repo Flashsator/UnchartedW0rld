@@ -55,6 +55,21 @@ const PREVIEW_STAT_CARD: BrollCard = {
   accent: '#34D399',
 };
 
+// Two named subjects → relation diagram (🐸 → 🪲); one named subject → focal node.
+const PREVIEW_DIAGRAM_CARD: BrollCard = {
+  kind: 'fact',
+  headline: 'The frog ambushes the beetle the instant it lands',
+  caption: 'Night hunter',
+  accent: '#B6F23D',
+};
+
+const PREVIEW_FOCAL_CARD: BrollCard = {
+  kind: 'fact',
+  headline: 'The seed can lie dormant for decades',
+  caption: 'Dormancy',
+  accent: '#34D399',
+};
+
 function isShortsManifest(m: RenderManifest | ShortsManifest | undefined): m is ShortsManifest {
   return !!m && 'sectionIdx' in m && 'duration' in m && !('sections' in m);
 }
@@ -106,6 +121,24 @@ export const Root: React.FC = () => {
         width={1920}
         height={1080}
         defaultProps={{ spec: PREVIEW_STAT_CARD }}
+      />
+      <Composition
+        id="FactCardDiagram"
+        component={FactCard}
+        durationInFrames={150}
+        fps={FPS}
+        width={1920}
+        height={1080}
+        defaultProps={{ spec: PREVIEW_DIAGRAM_CARD }}
+      />
+      <Composition
+        id="FactCardFocal"
+        component={FactCard}
+        durationInFrames={150}
+        fps={FPS}
+        width={1920}
+        height={1080}
+        defaultProps={{ spec: PREVIEW_FOCAL_CARD }}
       />
     </>
   );
