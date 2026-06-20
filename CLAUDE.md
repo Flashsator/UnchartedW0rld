@@ -46,6 +46,17 @@ Actions failure notification to the triggering account already covers a failed
 run; neither catches a *total* QStash non-trigger (that needs a separate
 heartbeat monitor).
 
+A separate **read-only** weekly workflow (`.github/workflows/funnel-report.yml`,
+Mon 14:00 UTC + manual `workflow_dispatch`) runs `scripts/funnelReport.ts` to
+track whether the Shorts→long-video funnel is improving over time. It ONLY reads
+analytics (it never edits a video) and is fully isolated from `daily.yml`, so it
+can't affect publishing. "Funnel views" = `EXT_URL + NO_LINK_OTHER` on long
+videos (the description "Full video" link, approximately) vs `RELATED_VIDEO`
+(algorithmic suggestions, not the funnel) — a rising funnel share means the
+Short→long link is getting more visible (pinned comments / Studio related-video
+cards). `scripts/` is outside the tsconfig `include`, so it's not in `npm run
+tsc` or the pipeline; run it locally with `npx tsx scripts/funnelReport.ts`.
+
 ## Invariants — do not break these
 
 1. **No fabricated data (science channel).** An on-screen overlay (`stat`/`label`/
