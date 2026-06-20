@@ -1,0 +1,35 @@
+name: Funnel report
+
+# Weekly READ-ONLY analytics pull: tracks whether the Shorts -> long-video
+# funnel is improving over time (description-link clicks vs algorithmic
+# suggestions). It never edits a video — it only reads analytics and writes a
+# summary to the run's job summary. Separate from daily.yml so it can never
+# affect the publishing pipeline.
+on:
+  schedule:
+    # Mondays 14:00 UTC, ~1h after the Monday daily run has published.
+    - cron: '0 14 * * 1'
+  workflow_dispatch: {}
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Funnel report
+        env:
+          YT_CLIENT_ID: ${{ secrets.YT_CLIENT_ID }}
+          YT_CLIENT_SECRET: ${{ secrets.YT_CLIENT_SECRET }}
+          YT_REFRESH_TOKEN: ${{ secrets.YT_REFRESH_TOKEN }}
+        run: npx tsx scripts/funnelReport.ts
