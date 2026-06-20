@@ -139,6 +139,48 @@ function compactHook(text: string): string {
   return `${(out || firstSentence.slice(0, CARD_HOOK_MAX_CHARS - 1)).trimEnd()}…`;
 }
 
+// The first spoken sentence of a section, cleaned of whitespace. Used as a
+// subject-named fallback hook for off-day Shorts — it is VERBATIM narration, so
+// any number it contains is by definition spoken (invariant #1 holds without a
+// separate guard), and unlike the abstract chapter heading it actually names the
+// subject and makes a claim a cold viewer can read.
+function firstSentence(narration: string): string {
+  const clean = (narration ?? '').trim().replace(/\s+/g, ' ');
+  if (!clean) return '';
+  return clean.match(/^.*?[.!?](?:\s|$)/)?.[0].trim() ?? clean;
+}
+
+// Decide the Short's title/card text. Priority:
+//  1. the script's purpose-written, subject-named `shortsHook` (already
+//     invariant-#1-gated upstream by normalizeShortsHook);
+//  2. for the section-0 teaser, the episode cold-open hook (curated, on-subject);
+//  3. for off-day sections, the section's FIRST spoken narration sentence — it
+//     names the subject and makes a real claim (data finding: subject-first lines
+//     win, abstract chapter-heading titles like "When Pollen Leaps the Gap" flop);
+//  4. last resort, the episode anchor subject, then the heading only if even that
+//     is empty.
+// The abstract chapter heading is deliberately NEVER preferred as a Short title.
+export function pickShortsHookText(opts: {
+  sectionIdx: number;
+  shortsHook?: string;
+  coldOpenHook: string;
+  narration: string;
+  heading: string;
+  subject?: string;
+}): string {
+  const hook = opts.shortsHook?.trim();
+  if (hook) return hook;
+  if (opts.sectionIdx === 0) {
+    const cold = opts.coldOpenHook?.trim();
+    if (cold) return cold;
+  }
+  const sentence = firstSentence(opts.narration);
+  if (sentence) return sentence;
+  const subject = opts.subject?.trim();
+  if (subject) return subject;
+  return opts.heading?.trim() ?? '';
+}
+
 export function buildShortsManifest(
   long: RenderManifest,
   longEpisode: Episode,
@@ -160,15 +202,21 @@ export function buildShortsManifest(
     narrationSec,
   );
 
-  // Title/card text: every section now prefers the script's purpose-written
-  // standalone shortsHook. Fallbacks differ by section: the teaser (section 0)
-  // falls back to the episode cold-open hook (older episodes have no section-0
-  // shortsHook), while off-day sections fall back to the chapter heading — a
-  // heading is a chapter label, not a hook, but it beats nothing on old episodes.
+  // Title/card text: every section prefers the script's purpose-written
+  // standalone shortsHook. Fallbacks NEVER use the abstract chapter heading —
+  // that produced flop titles like "When Pollen Leaps the Gap". The teaser
+  // (section 0) falls back to the episode cold-open hook; off-day sections fall
+  // back to the section's first spoken narration sentence (subject-named, a real
+  // claim), then to the episode anchor subject — see pickShortsHookText.
   const epSection = longEpisode.sections[entry.sectionIdx];
-  const sectionShortsHook = epSection?.shortsHook?.trim();
-  const hookText =
-    sectionShortsHook || (entry.sectionIdx === 0 ? long.hook : section.heading);
+  const hookText = pickShortsHookText({
+    sectionIdx: entry.sectionIdx,
+    shortsHook: epSection?.shortsHook,
+    coldOpenHook: long.hook,
+    narration: epSection?.narration ?? '',
+    heading: section.heading,
+    subject: longEpisode.subject,
+  });
   // No "#Shorts" in the title — YouTube classifies Shorts by vertical ratio +
   // duration, not the hashtag, so it only wastes title space that should be a
   // pure curiosity hook. (Description still carries hashtags.)

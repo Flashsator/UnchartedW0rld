@@ -1,6 +1,11 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildShortsManifest, planShortsForToday, publishAtFor } from '../src/shortsGen.js';
+import {
+  buildShortsManifest,
+  pickShortsHookText,
+  planShortsForToday,
+  publishAtFor,
+} from '../src/shortsGen.js';
 import type { Episode, RenderManifest } from '../src/types.js';
 
 beforeEach(() => {
@@ -86,9 +91,12 @@ function episodeFixture(shortsHook?: string, section0Hook?: string): Episode {
     hook: 'Your cat breaks the laws of physics every morning.',
     description: 'desc',
     tags: ['cats'],
+    subject: 'cat',
     sections: Array.from({ length: 6 }, (_, i) => ({
       heading: `Chapter Label ${i}`,
-      narration: 'Hello.',
+      // A subject-first first sentence so the off-day fallback (now the first
+      // spoken narration sentence, never the abstract chapter heading) is real.
+      narration: 'A cat never scoops water. It snaps a column straight up.',
       visual: 'cat drinking water',
       ...(i === 0 && section0Hook !== undefined ? { shortsHook: section0Hook } : {}),
       ...(i === 3 && shortsHook !== undefined ? { shortsHook } : {}),
@@ -129,18 +137,97 @@ test('off-day short prefers the script-written shortsHook over the chapter headi
   assert.equal(sm.hook, 'Cats bend physics every single time they drink water');
 });
 
-test('off-day short falls back to the heading when shortsHook is absent or blank', () => {
+test('off-day short falls back to the first narration sentence, NOT the abstract heading', () => {
+  // The chapter heading ("Chapter Label 3") is a label, not a hook — preferring
+  // it produced flop titles like "When Pollen Leaps the Gap". With no shortsHook
+  // the Short now titles off the section's first spoken (subject-named) sentence.
   const absent = buildShortsManifest(manifestFixture(), episodeFixture(), {
     sectionIdx: 3,
     daysAhead: 1,
   });
   assert.ok(absent);
-  assert.equal(absent.shortsTitle, 'Chapter Label 3');
+  assert.equal(absent.shortsTitle, 'A cat never scoops water.');
+  assert.notEqual(absent.shortsTitle, 'Chapter Label 3');
 
   const blank = buildShortsManifest(manifestFixture(), episodeFixture('   '), {
     sectionIdx: 3,
     daysAhead: 1,
   });
   assert.ok(blank);
-  assert.equal(blank.shortsTitle, 'Chapter Label 3');
+  assert.equal(blank.shortsTitle, 'A cat never scoops water.');
+});
+
+// --- pickShortsHookText (pure fallback decider) ---------------------------------
+
+test('pickShortsHookText prefers the script-written shortsHook above all', () => {
+  const out = pickShortsHookText({
+    sectionIdx: 3,
+    shortsHook: '  A wasp turns a caterpillar into a living food store  ',
+    coldOpenHook: 'cold open',
+    narration: 'A cat never scoops water. It snaps a column up.',
+    heading: 'Chapter Label 3',
+    subject: 'cat',
+  });
+  assert.equal(out, 'A wasp turns a caterpillar into a living food store');
+});
+
+test('pickShortsHookText: section 0 falls back to the cold-open hook', () => {
+  const out = pickShortsHookText({
+    sectionIdx: 0,
+    shortsHook: undefined,
+    coldOpenHook: 'Your cat breaks the laws of physics every morning.',
+    narration: 'Something else entirely is spoken first.',
+    heading: 'Chapter Label 0',
+    subject: 'cat',
+  });
+  assert.equal(out, 'Your cat breaks the laws of physics every morning.');
+});
+
+test('pickShortsHookText: off-day section falls back to the first narration sentence', () => {
+  const out = pickShortsHookText({
+    sectionIdx: 3,
+    shortsHook: undefined,
+    coldOpenHook: 'cold open',
+    narration: 'A cat never scoops water. It snaps a column straight up.',
+    heading: 'Chapter Label 3',
+    subject: 'cat',
+  });
+  assert.equal(out, 'A cat never scoops water.');
+});
+
+test('pickShortsHookText NEVER returns the abstract chapter heading when a sentence exists', () => {
+  const out = pickShortsHookText({
+    sectionIdx: 3,
+    shortsHook: undefined,
+    coldOpenHook: '',
+    narration: 'A mosquito pierces your skin and you feel nothing.',
+    heading: 'When Pollen Leaps the Gap',
+    subject: 'mosquito',
+  });
+  assert.equal(out, 'A mosquito pierces your skin and you feel nothing.');
+  assert.notEqual(out, 'When Pollen Leaps the Gap');
+});
+
+test('pickShortsHookText: empty narration falls back to the subject, not the heading', () => {
+  const out = pickShortsHookText({
+    sectionIdx: 3,
+    shortsHook: undefined,
+    coldOpenHook: '',
+    narration: '   ',
+    heading: 'Chapter Label 3',
+    subject: 'glass frog',
+  });
+  assert.equal(out, 'glass frog');
+});
+
+test('pickShortsHookText: only the heading remains when narration and subject are empty', () => {
+  const out = pickShortsHookText({
+    sectionIdx: 3,
+    shortsHook: undefined,
+    coldOpenHook: '',
+    narration: '',
+    heading: 'Chapter Label 3',
+    subject: undefined,
+  });
+  assert.equal(out, 'Chapter Label 3');
 });
