@@ -56,6 +56,12 @@ videos (the description "Full video" link, approximately) vs `RELATED_VIDEO`
 Short→long link is getting more visible (pinned comments / Studio related-video
 cards). `scripts/` is outside the tsconfig `include`, so it's not in `npm run
 tsc` or the pipeline; run it locally with `npx tsx scripts/funnelReport.ts`.
+A sibling **read-only** workflow (`.github/workflows/shorts-hook-report.yml`,
+Mon 14:30 UTC + manual `workflow_dispatch`) runs `scripts/shortsHookReport.ts` to
+rank every Short (≤180s) over ~120 days by views alongside its title/hook,
+retention, engagement, and subscribers gained — the feedback loop for tuning the
+`shortsHook` prompt. Same isolation guarantees: analytics-only, never edits a
+video, fully separate from `daily.yml`.
 
 ## Invariants — do not break these
 
