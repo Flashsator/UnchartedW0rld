@@ -179,6 +179,9 @@ export type RenderManifest = {
     // renders a self-built FactCard in that slot instead of the (proven
     // off-subject) clip. Absent/empty leaves every slot as real footage.
     shotCards?: (BrollCard | null)[];
+    // Index-aligned to brollPaths: when shotStills[i] is set, SectionScene renders
+    // that image as a near-motionless STILL (rest beat) instead of the moving clip.
+    shotStills?: (string | null)[];
   }>;
   interludes: Interlude[];
   // watchNextTitle: the channel's best-performing past video title (from the

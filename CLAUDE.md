@@ -314,7 +314,7 @@ silently resets every run.
   max), not documentary prose, since the Shorts audio is reused verbatim from the
   long-form section and that prompt is the only lever on its spoken cadence.
 - **Shorts cut faster than the long-form (by design):** `SHORTS_CLIP_SEC = 3.4`
-  in `src/config.ts` (the long-form `BROLL_CLIP_SEC` stays 5) — a vertical,
+  in `src/config.ts` (the long-form `BROLL_CLIP_SEC` is 6) — a vertical,
   muted, fast-scrolled feed rewards energy, so the same narration gets ~50% more
   cuts. It drives BOTH the portrait-clip fetch quota (`fetchShortsBroll`'s
   `needed` in `src/stock.ts`) and the Short's `clipQuota` in `pipeline.ts`. The
@@ -322,6 +322,27 @@ silently resets every run.
   floor (invariant #3 holds); the rare landscape-fallback path (<2 portrait clips
   found) inherits the faster cadence by center-cropping the relevant long-section
   clips, which stays on-subject. Don't relax the floor to chase the quota.
+- **Long-form rest beats + slower cadence (anti-fatigue):** the long-form picture
+  used to move constantly (video + Ken Burns + grade + captions), which tires the
+  eye. Two levers ease it, **long-form only** (Shorts keep their fast cadence):
+  (1) `BROLL_CLIP_SEC` was raised **5 → 6** in `src/config.ts` — shots-per-section
+  = `max(beats, ceil(duration / perShot))`, so a bigger baseline yields ~15% fewer
+  cuts. Note `BROLL_CLIP_SEC` is ALSO read in `src/stock.ts` (the `orderPoolByPreference`
+  weak-clip threshold and the `makeKenBurnsClip` frame count), so the change
+  propagates there by design. (2) `REST_STILLS_PER_SECTION` (1) slots ONE shot per
+  section as a genuine **still** so the eye gets a pause. The pure decider is
+  `pickRestSlots` in `src/cuts.ts` (unit-tested): it is conservative — never slot 0
+  (the cold-open/establishing shot), never a card slot, never a slot whose
+  narration window speaks a number (those keep the accent push-in), nothing at all
+  below `REST_STILL_MIN_CLIPS` (3) shots, and it prefers the longest-held slot. The
+  image comes from `fetchRestStill` in `src/stock.ts`: an **on-subject Unsplash
+  photo** of the episode `subject` if available, else a **freeze-frame** of the
+  already-chosen, already-vetted clip — so the rest beat is on-subject by
+  construction (invariant #3 holds) and best-effort (any failure keeps the moving
+  clip, zero regression). It renders via `CalmStill` in `SectionScene.tsx` (a
+  barely-there 1.0→1.03 push; captions/overlays/grade still layer on top),
+  index-aligned through the new `shotStills?: (string|null)[]` manifest field.
+  Render-side + one fetch step, no new state file.
 - **Schedule:** `PUBLISH_WEEKDAYS_UTC = [1,3,5]`; `WEEKDAY_SERIES_MAP` = Mon→animals,
   Wed→insects, Fri→plants. The run is *triggered* at 13:00 UTC but each long video
   is *scheduled public* at `PUBLISH_HOUR_UTC` = **19:00 UTC** (the US-afternoon

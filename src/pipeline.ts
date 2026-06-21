@@ -13,6 +13,8 @@ import {
   OUTRO_SUBSCRIBE_SEC,
   OUT_DIR,
   PUBLISH_OFFSET_HOURS,
+  REST_STILLS_PER_SECTION,
+  REST_STILL_MIN_CLIPS,
   SHORTS_CLIP_SEC,
   TARGET_MINUTES,
   UPLOAD_LOCK_FILE,
@@ -30,6 +32,7 @@ import {
   fetchBgm,
   fetchBroll,
   fetchBrollForBeats,
+  fetchRestStill,
   fetchShortsBroll,
   pixabayCategoryForSeries,
 } from './stock.js';
@@ -47,7 +50,7 @@ import { rescueWorstPackaging } from './ctrRescue.js';
 import { auditRecentContent } from './contentAudit.js';
 import { extractIconEvents } from './iconExtractor.js';
 import { planShotCards } from './brollCards.js';
-import { computeCutTimes, sectionClipSeconds } from './cuts.js';
+import { computeCutTimes, pickRestSlots, sectionClipSeconds } from './cuts.js';
 import { buildShortsManifest, planShortsForToday, publishAtFor } from './shortsGen.js';
 import type {
   BrollCard,
@@ -175,6 +178,9 @@ async function main(): Promise<void> {
   // onSubject tags) and reused when the manifest is assembled below.
   const cutTimesBySection: number[][] = [];
   const shotCardsBySection: (BrollCard | null)[][] = [];
+  // Index-aligned to each section's broll paths: the rest-beat still image
+  // (relative asset path) for any slot picked as a pause, else null.
+  const shotStillsBySection: (string | null)[][] = [];
   for (let i = 0; i < sectionAudios.length; i++) {
     const sec = sectionAudios[i]!;
     // Ordered per-beat shot list (subject-anchored in scriptGen) so footage
@@ -214,9 +220,36 @@ async function main(): Promise<void> {
       seriesKey: series.key,
       isColdOpenSection: i === 0,
     });
+    // Rest beats (long-form anti-fatigue): pick at most one slot per section to
+    // render as a near-motionless still so the eye gets a pause between moving
+    // shots. Conservative (never slot 0 / a card slot / a number beat); skipped
+    // entirely on short sections. Best-effort — a failed fetch keeps the clip.
+    const cardSlots = shotCards.map((c) => c !== null);
+    const restSlots = pickRestSlots({
+      clipCount: clips.length,
+      cutTimes,
+      totalSec,
+      words: sec.words,
+      cardSlots,
+      maxStills: REST_STILLS_PER_SECTION,
+      minClips: REST_STILL_MIN_CLIPS,
+    });
+    const shotStills: (string | null)[] = clips.map(() => null);
+    for (const idx of restSlots) {
+      const still = await fetchRestStill(
+        clips[idx]!,
+        episode.subject,
+        ensureDir(path.join(runDir, 'broll')),
+        used,
+        footageUsed,
+      );
+      if (still) shotStills[idx] = relAsset(runDir, still);
+    }
     broll.push(paths);
     cutTimesBySection.push(cutTimes);
     shotCardsBySection.push(shotCards);
+    shotStillsBySection.push(shotStills);
+    log(`Rest stills: ${shotStills.filter(Boolean).length}/${clips.length} in section`);
   }
 
   const interludeCount = sectionAudios.length >= 3
@@ -315,6 +348,7 @@ async function main(): Promise<void> {
       iconEvents: extractIconEvents(s.words, `${s.heading} ${s.visual}`),
       overlays: episode.sections[i]?.overlays,
       shotCards: shotCardsBySection[i]!,
+      shotStills: shotStillsBySection[i]!,
     })),
     interludes,
     outro: { durationSec: OUTRO_SUBSCRIBE_SEC, watchNextTitle: winningTitles[0] },

@@ -1,5 +1,6 @@
 import {
   AbsoluteFill,
+  Img,
   OffthreadVideo,
   Sequence,
   interpolate,
@@ -126,6 +127,23 @@ function KenBurnsClip({
   );
 }
 
+// A "rest beat" still: the image held almost motionless with a barely-there
+// slow push (1.0 → 1.03) so the eye gets a pause between moving shots without
+// the frame feeling frozen. Subtitles, overlays and the colour grade still sit
+// on top, so the section reads continuously — just calmer for this one shot.
+function CalmStill({ src, durationInFrames }: { src: string; durationInFrames: number }) {
+  const frame = useCurrentFrame();
+  const scale = interpolate(frame, [0, durationInFrames], [1.0, 1.03], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  });
+  return (
+    <AbsoluteFill style={{ transform: `scale(${scale})`, transformOrigin: 'center center' }}>
+      <Img src={src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+    </AbsoluteFill>
+  );
+}
+
 // Thin top/bottom bars that ease in for a cinematic establishing/closing shot.
 // Opacity-only so it stays compositor-cheap; reserved for two shots per episode
 // (the first section's opener, the last section's closer) to stay an accent,
@@ -210,6 +228,17 @@ export function SectionScene({ section, index, sectionCount }: SectionSceneProps
           return (
             <Sequence key={i} from={startFrame} durationInFrames={durFrames}>
               <FactCard spec={card} />
+            </Sequence>
+          );
+        }
+        // A slot picked as a rest beat renders a near-motionless still image
+        // (on-subject Unsplash photo or a freeze-frame of the chosen clip) so
+        // the eye gets a pause; subtitles/overlays/grade still layer on top.
+        const still = section.shotStills?.[i];
+        if (still) {
+          return (
+            <Sequence key={i} from={startFrame} durationInFrames={durFrames}>
+              <CalmStill src={pathToSrc(still)} durationInFrames={durFrames} />
             </Sequence>
           );
         }

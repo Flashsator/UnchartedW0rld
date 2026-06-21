@@ -238,7 +238,18 @@ export const INTER_SECTION_GAP_SEC = 1.8;
 export const TTS_VOICE_FALLBACK = 'en-US-GuyNeural';
 export const TTS_RATE = '-2%';
 
-export const BROLL_CLIP_SEC = 5;
+// Long-form seconds-per-shot baseline. Raised 5 → 6 to slow the cut cadence:
+// shot count per section = max(beats, ceil(duration / perShot)), so a larger
+// baseline yields ~15% fewer cuts (long-form anti-fatigue). Shorts keep their
+// own faster SHORTS_CLIP_SEC and are unaffected.
+export const BROLL_CLIP_SEC = 6;
+
+// --- Rest-beat stills (long-form anti-fatigue) -------------------------------
+// ONE shot per section is rendered as a genuine STILL (prefers an on-subject
+// Unsplash photo, else freeze-frames the already-chosen, already-vetted clip)
+// so the eye gets a rest point between moving shots. Long-form ONLY.
+export const REST_STILLS_PER_SECTION = Number(process.env.REST_STILLS_PER_SECTION ?? 1);
+export const REST_STILL_MIN_CLIPS = Number(process.env.REST_STILL_MIN_CLIPS ?? 3);
 // Shorts cut faster than the long-form (a vertical, muted, fast-scrolled feed
 // rewards energy): a Short holds each shot ~3.4s vs the long-form 5s, so the
 // same narration gets ~50% more cuts. Drives both the portrait-clip fetch quota

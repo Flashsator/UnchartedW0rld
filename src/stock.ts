@@ -645,6 +645,58 @@ async function makeKenBurnsClip(
 // filename (Date.now() alone can repeat within a millisecond on fast disks).
 let brollSeq = 0;
 
+// Fetch a STILL image for a "rest beat" slot (long-form anti-fatigue): prefer an
+// on-subject Unsplash photo (the same kind of subject-matched still the b-roll
+// gap-fill already trusts), else freeze a midpoint frame of the already-chosen,
+// already-vetted clip so the rest beat is guaranteed on-subject. Returns the
+// absolute image path, or null if nothing could be produced. Best-effort: any
+// failure returns null so the caller keeps the moving clip — zero regression.
+export async function fetchRestStill(
+  clip: BrollClip,
+  subject: string | undefined,
+  cacheDir: string,
+  usedUrls: Set<string>,
+  sourcesUsed?: Set<string>,
+): Promise<string | null> {
+  const subj = subject?.trim();
+  if (subj && UNSPLASH_ACCESS_KEY) {
+    try {
+      const photos = shuffle(await searchUnsplash(subj)).filter((u) => !usedUrls.has(u));
+      const photoUrl = photos[0];
+      if (photoUrl) {
+        const dest = path.join(cacheDir, safeFilename(`rest_${subj}_${brollSeq++}_${Date.now()}.jpg`));
+        await downloadFile(photoUrl, dest);
+        usedUrls.add(photoUrl);
+        sourcesUsed?.add('Unsplash');
+        log(`Rest still: Unsplash photo for "${subj}"`);
+        return dest;
+      }
+    } catch (e) {
+      log(`Rest still Unsplash failed: ${(e as Error).message}`);
+    }
+  }
+  try {
+    const dest = path.join(cacheDir, safeFilename(`rest_freeze_${brollSeq++}_${Date.now()}.jpg`));
+    const mid = Number.isFinite(clip.duration) && clip.duration > 0 ? clip.duration / 2 : 0;
+    await run('ffmpeg', [
+      '-y', '-loglevel', 'error',
+      '-ss', mid.toFixed(2),
+      '-i', clip.path,
+      '-frames:v', '1',
+      '-q:v', '2',
+      dest,
+    ]);
+    if (fs.existsSync(dest) && fs.statSync(dest).size > 0) {
+      log('Rest still: freeze-frame of chosen clip');
+      return dest;
+    }
+    return null;
+  } catch (e) {
+    log(`Rest still freeze-frame failed: ${(e as Error).message}`);
+    return null;
+  }
+}
+
 // Floor on how far a beat query may be broadened. The subject noun leads every
 // anchored beat query (see anchorVisual in scriptGen), so keeping at least this
 // many leading words always retains the subject — a missed specific shot

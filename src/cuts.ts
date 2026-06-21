@@ -92,3 +92,47 @@ export function computeCutTimes(
 
   return starts.slice(0, n).map((s) => Math.max(0, Math.min(s, totalSec - 0.05)));
 }
+
+/**
+ * Pick which b-roll slots should render as a near-motionless STILL (rest beat)
+ * so the eye gets a pause between moving shots (long-form anti-fatigue). Returns
+ * the chosen slot indices, ascending.
+ *
+ * Conservative by design: never slot 0 (the cold-open/establishing shot), never
+ * a card slot, never a slot whose narration window speaks a number (those beats
+ * carry the accent push-in), and nothing at all unless the section has at least
+ * `minClips` shots. Among the eligible slots it prefers the longest holds (a
+ * still reads best when it lingers), tie-broken by earliest index. Pure
+ * (unit-tested); does no I/O — the caller fetches the actual still image.
+ */
+export function pickRestSlots(opts: {
+  clipCount: number;
+  cutTimes: number[];
+  totalSec: number;
+  words: WordTiming[];
+  cardSlots?: boolean[];
+  maxStills?: number;
+  minClips?: number;
+}): number[] {
+  const { clipCount, cutTimes, totalSec, words } = opts;
+  const maxStills = Math.max(0, opts.maxStills ?? 1);
+  const minClips = opts.minClips ?? 3;
+  if (maxStills === 0 || clipCount < minClips) return [];
+  const slotHasNumber = (i: number): boolean => {
+    const start = cutTimes[i] ?? 0;
+    const end = i + 1 < cutTimes.length ? cutTimes[i + 1]! : totalSec;
+    return words.some((w) => w.start >= start - 0.1 && w.start < end && /\d/.test(w.text));
+  };
+  const candidates: Array<{ idx: number; hold: number }> = [];
+  for (let i = 1; i < clipCount; i++) {
+    // never slot 0
+    if (opts.cardSlots?.[i]) continue; // never a card slot
+    if (slotHasNumber(i)) continue; // never a number/accent beat
+    const start = cutTimes[i] ?? 0;
+    const end = i + 1 < cutTimes.length ? cutTimes[i + 1]! : totalSec;
+    candidates.push({ idx: i, hold: end - start });
+  }
+  if (candidates.length === 0) return [];
+  candidates.sort((a, b) => b.hold - a.hold || a.idx - b.idx); // longest hold, tie earliest
+  return candidates.slice(0, maxStills).map((c) => c.idx).sort((a, b) => a - b);
+}
