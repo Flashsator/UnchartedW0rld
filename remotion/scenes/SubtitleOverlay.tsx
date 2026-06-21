@@ -22,11 +22,14 @@ const HIGHLIGHT = '#FFE94A';
 // the font until the line fits the usable width, clamped to a readable floor
 // and the design-max so short cues stay big and punchy.
 //
-// Conservative em-advance for Inter weight 800 in sentence case; pairs with the
-// `WIDTH_SAFETY` headroom below to absorb above-average-width cues and the
-// active word's karaoke pop without ever overflowing.
+// Conservative em-advance for Inter weight 800 in sentence case. The font fit
+// must keep the row inside the frame ON ITS OWN: each word's `<span>` is
+// `flexShrink: 0` (see below) so an over-wide row can no longer be squeezed —
+// it would clip at the edges instead. `WIDTH_SAFETY` therefore carries extra
+// headroom to absorb above-average-width cues (wide glyphs like W/M/m) without
+// the row exceeding the box.
 const GLYPH_ADVANCE_RATIO = 0.56;
-const WIDTH_SAFETY = 0.94;
+const WIDTH_SAFETY = 0.9;
 
 type FitParams = {
   frameWidth: number;
@@ -136,6 +139,16 @@ export function SubtitleOverlay({ words, variant = 'horizontal' }: SubtitleOverl
               key={i}
               style={{
                 display: 'inline-block',
+                // The container's `flexWrap: nowrap` stops word-to-word wrapping,
+                // but NOT a break *inside* a single word: a hyphenated token
+                // ("deep-sea", "cold-blooded") is one span, and when the row is a
+                // touch too wide the default `flex-shrink: 1` squeezes the span and
+                // the browser breaks it at the hyphen — dropping the tail ("sea")
+                // onto a second line. Pin each word: never break internally
+                // (`whiteSpace: nowrap`) and never let the flex item shrink
+                // (`flexShrink: 0`), so the cue truly stays on one line.
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
                 transform: `scale(${pop})`,
                 transformOrigin: 'center bottom',
                 color: isActive ? HIGHLIGHT : '#ffffff',

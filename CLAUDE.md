@@ -305,7 +305,16 @@ silently resets every run.
   cap, so don't reintroduce a clamp without re-checking the cascade. The Shorts
   caption (`SubtitleOverlay.tsx`, vertical variant only) lights the active
   karaoke word with an **overshoot pop** (0.82→1.08→1) so the highlight reads as
-  a beat; the long-form caption path stays calm/uniform-white. The opener is also
+  a beat; the long-form caption path stays calm/uniform-white. **Both variants
+  force ONE line per cue — and one line *per word*.** `flexWrap:'nowrap'` only
+  stops word-to-word wrapping, so every word `<span>` ALSO pins
+  `whiteSpace:'nowrap'` + `flexShrink:0`: without them a hyphenated TTS token
+  (`deep-sea`, `cold-blooded`) is a single squeezable span and the browser
+  breaks it at the hyphen, dropping the tail (`sea`) to a second line — the
+  long-form caption glitch fixed here. `fitFontSize` auto-shrinks the whole row
+  to a pixel budget (`WIDTH_SAFETY` 0.90 headroom) so the pinned, non-shrinking
+  row stays inside the frame instead of clipping. Don't drop the per-word
+  `nowrap`/`flexShrink:0` or push `WIDTH_SAFETY` back toward 1.0. The opener is also
   front-loaded: the Shorts-cut prompt rule makes sections 3/5's FIRST narration
   sentence the section's biggest scroll-stopping hook — framed as a TEASE, never
   the payoff, so the no-spoiler chapter rule and invariant #1 still hold — and a
