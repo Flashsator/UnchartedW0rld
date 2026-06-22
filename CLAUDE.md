@@ -146,12 +146,20 @@ video, fully separate from `daily.yml`.
    verbatim clause makes a `fact` card; nothing is ever reworded or fabricated.
    The `fact` card RENDERS as a tiny **schematic** chosen by how many subjects the
    verbatim clause names (`collectCardIcons` in `src/iconDict.ts`, the pure
-   layout decider): **2 distinct subject emoji → a relation diagram** (two ringed
-   subject nodes + a connector that draws in + a travelling A→B pulse + arrowhead
-   — for process beats like "the wasp paralyses the caterpillar"), **1 → a focal
-   node** (emoji in an accent ring + concentric pulse rings), **0 → an editorial
-   text card** (key word accented). The emoji are DECORATIVE only — they depict a
-   subject the verbatim text already names and add no data (invariant #1 holds);
+   layout decider, fed ONLY the on-screen `headline` clause — NOT the subject
+   caption: keying off the caption injected the same subject emoji into every card
+   of a single-subject episode, e.g. an owl episode, so every card hit the 1-icon
+   focal layout and rendered an identical graphic with only the text changing;
+   off the clause the visual matches the words shown and the layout varies
+   naturally across the episode): **2 distinct subject emoji → a relation diagram**
+   (two ringed subject nodes + a connector that draws in + a travelling A→B pulse
+   + arrowhead — for process beats like "the wasp paralyses the caterpillar"),
+   **1 → a focal node** (emoji in an accent ring + ONE of three deterministic
+   motifs picked by `focalVariant(headline)` — expanding rings / a steady breathing
+   halo / a slow rotating dashed ring — so repeated focal cards don't look
+   identical and the "sonar" emission is only 1 of 3, not every card), **0 → an
+   editorial text card** (key word accented). The emoji are DECORATIVE only — they
+   depict a subject the verbatim text already names and add no data (invariant #1 holds);
    the arrow follows narration order and asserts no new claim. `ICON_DICT` lists
    only faithful glyphs — a subject with no accurate emoji (wasp, moth) is
    deliberately ABSENT so the card degrades to the text layout, never a wrong

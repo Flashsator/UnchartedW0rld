@@ -266,31 +266,131 @@ function RelationDiagram({ icons, accent, t }: { icons: string[]; accent: string
   );
 }
 
-// One subject node with concentric pulse rings expanding outward — a focal
-// "here is the subject" beat for a clause that names a single creature/plant.
+// Deterministic 0..2 from the clause text so the focal motif varies card-to-card
+// across one episode — a single-subject episode (e.g. owls) otherwise repeats the
+// identical focal graphic with only the caption changing — while staying stable
+// for a given card. Pure.
+function focalVariant(text: string): number {
+  let h = 0;
+  for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) >>> 0;
+  return h % 3;
+}
+
+// The accent treatment ringing a focal node. Three motifs so repeated focal
+// cards don't look identical, and so the outward "sonar" emission (which reads as
+// sound and rarely matches the clause) is only ONE of three rather than every
+// card. All transform/opacity (compositor-friendly). Variants 1/2 keep a gentle
+// continuous ambient motion (breath / slow rotation) — like the card's existing
+// float/breath — so a long hold never freezes, never a layout-bound property.
 const FOCAL = 300;
-function FocalNode({ emoji, accent, t }: { emoji: string; accent: string; t: number }) {
+function FocalMotif({ accent, t, variant }: { accent: string; t: number; variant: number }) {
+  // 0 — expanding concentric rings: a focal pulse (the original look).
+  if (variant === 0) {
+    return (
+      <>
+        {[0, 0.5, 1].map((phase, i) => {
+          const ring = (t * 0.45 + phase) % 1.5; // staggered, repeating 0→1.5
+          const ringScale = 1 + ring * 0.9;
+          const ringOpacity = ring < 1 ? interpolate(ring, [0, 1], [0.35, 0], CLAMP) : 0;
+          return (
+            <div
+              key={i}
+              style={{
+                position: 'absolute',
+                width: FOCAL,
+                height: FOCAL,
+                borderRadius: '50%',
+                border: `3px solid ${accent}`,
+                opacity: ringOpacity,
+                transform: `scale(${ringScale})`,
+              }}
+            />
+          );
+        })}
+      </>
+    );
+  }
+  // 1 — a steady halo that breathes in place: spotlight, no outward emission.
+  if (variant === 1) {
+    const breath = 1 + Math.sin(t * 1.1) * 0.03;
+    const glow = interpolate(t, [0, 0.6], [0, 1], CLAMP);
+    return (
+      <>
+        <div
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
+            width: FOCAL * 1.2,
+            height: FOCAL * 1.2,
+            borderRadius: '50%',
+            background: `radial-gradient(circle, ${hexA(accent, 0.18)} 0%, rgba(0,0,0,0) 68%)`,
+            opacity: glow,
+            transform: `translate(-50%, -50%) scale(${breath})`,
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: '50%',
+            width: FOCAL,
+            height: FOCAL,
+            borderRadius: '50%',
+            border: `2px solid ${hexA(accent, 0.55)}`,
+            opacity: glow,
+            transform: 'translate(-50%, -50%)',
+          }}
+        />
+      </>
+    );
+  }
+  // 2 — a slow rotating dashed ring: reads as "observe / focus", not emit.
+  const rot = t * 34; // deg/sec, gentle
+  const draw = interpolate(t, [0.1, 0.7], [0, 1], CLAMP);
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      width={FOCAL * 1.12}
+      height={FOCAL * 1.12}
+      style={{
+        position: 'absolute',
+        left: '50%',
+        top: '50%',
+        transform: `translate(-50%, -50%) rotate(${rot}deg)`,
+        opacity: draw,
+      }}
+    >
+      <circle
+        cx="50"
+        cy="50"
+        r="46"
+        fill="none"
+        stroke={accent}
+        strokeWidth="1.6"
+        strokeDasharray="9 8"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+// One subject node seated inside one of the focal motifs above — a focal
+// "here is the subject" beat for a clause that names a single creature/plant.
+function FocalNode({
+  emoji,
+  accent,
+  t,
+  variant,
+}: {
+  emoji: string;
+  accent: string;
+  t: number;
+  variant: number;
+}) {
   return (
     <div style={{ position: 'relative', width: FOCAL, height: FOCAL, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      {[0, 0.5, 1].map((phase, i) => {
-        const ring = (t * 0.45 + phase) % 1.5; // staggered, repeating 0→1.5
-        const ringScale = 1 + ring * 0.9;
-        const ringOpacity = ring < 1 ? interpolate(ring, [0, 1], [0.35, 0], CLAMP) : 0;
-        return (
-          <div
-            key={i}
-            style={{
-              position: 'absolute',
-              width: FOCAL,
-              height: FOCAL,
-              borderRadius: '50%',
-              border: `3px solid ${accent}`,
-              opacity: ringOpacity,
-              transform: `scale(${ringScale})`,
-            }}
-          />
-        );
-      })}
+      <FocalMotif accent={accent} t={t} variant={variant} />
       <IconNode emoji={emoji} accent={accent} t={t} size={FOCAL * 0.74} delay={0.12} />
     </div>
   );
@@ -337,7 +437,14 @@ export function FactCard({ spec }: { spec: BrollCard }) {
   const float = Math.sin(t * 0.9) * 5; // gentle settle float so a long hold isn't frozen
 
   const isStat = spec.kind === 'stat';
-  const icons = collectCardIcons(`${spec.caption ?? ''} ${spec.headline}`, 2);
+  // Icons follow the on-screen clause (spec.headline), NOT the subject carried in
+  // the caption. Keying off the caption injected the SAME subject emoji into every
+  // card of a single-subject episode (e.g. an owl episode), so every fact card
+  // landed on the 1-icon focal layout and rendered an identical graphic with only
+  // the text changing. Off the verbatim clause the visual matches the words shown
+  // and varies naturally across the episode (two named subjects → relation diagram,
+  // one → focal node, none → editorial text). The caption still labels the subject.
+  const icons = collectCardIcons(spec.headline, 2);
 
   // Stat → big count-up number (the figure is the star); a focal icon is wrong
   // for a number, so stats stay the editorial left block.
@@ -447,7 +554,7 @@ export function FactCard({ spec }: { spec: BrollCard }) {
           }}
         >
           <Kicker label={spec.caption ?? ''} accent={accent} t={t} />
-          <FocalNode emoji={icons[0]!} accent={accent} t={t} />
+          <FocalNode emoji={icons[0]!} accent={accent} t={t} variant={focalVariant(spec.headline)} />
           <div style={{ maxWidth: 1300, marginTop: 48 }}>
             <WordCascade
               text={spec.headline}
