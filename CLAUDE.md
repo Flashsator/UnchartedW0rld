@@ -158,7 +158,12 @@ video, fully separate from `daily.yml`.
    motifs picked by `focalVariant(headline)` — expanding rings / a steady breathing
    halo / a slow rotating dashed ring — so repeated focal cards don't look
    identical and the "sonar" emission is only 1 of 3, not every card), **0 → an
-   editorial text card** (key word accented). The emoji are DECORATIVE only — they
+   abstract animated motif** (`AbstractFocal` in `FactCard.tsx`: a neutral glowing
+   core inside one of those same `FocalMotif` variants — no creature — above the
+   same centered verbatim clause; when the words name no subject we can show
+   faithfully, animate instead of dropping to a flat text slide. User directive:
+   "match the words with an icon, else use animation." The motif depicts nothing,
+   so invariant #1 is trivially safe). The emoji are DECORATIVE only — they
    depict a subject the verbatim text already names and add no data (invariant #1 holds);
    the arrow follows narration order and asserts no new claim. `ICON_DICT` lists
    only faithful glyphs — a subject with no accurate emoji (wasp, moth) is
@@ -174,6 +179,18 @@ video, fully separate from `daily.yml`.
    every glyph used earlier and surfaces a DIFFERENT spoken-and-in-context
    subject, or none, instead of repeating e.g. 🦉 every section). It only ever
    SKIPS — invariant #1 holds (the spoken-AND-in-context gate is unchanged).
+   When NO faithful glyph matches (none in the dict, none in context, or the only
+   match was already used this episode), the corner now falls back to ONE
+   **abstract animated motif** instead of going blank (`IconEvent` is
+   `{start; emoji?; motif?}`, exactly one set; `CornerMotif` in `IconOverlay.tsx`
+   renders 4 pure-geometry variants — pulse rings / orbiting dot / breathing bars
+   / rotating dashed ring — chosen deterministically from the section context for
+   variety). Same user directive as the card path; the motif depicts nothing so
+   invariant #1 is safe. The motif carries no `emoji`, so `pipeline.ts` does NOT
+   add it to `usedIconEmojis` (a motif section never burns a glyph) and `mux.ts`
+   gates the audio icon-pop on `ev.emoji` (motif sections are a quiet visual-only
+   beat, keeping the pop an accent for true subject reveals). Pure parts
+   unit-tested in `test/iconExtractor.test.ts`.
    Long-form only (Shorts untouched); render-side, no new state file.
    This is a safety net, NOT a strategy — a real on-subject clip always wins; the
    goal is that a bad slot degrades to a clean designed card, never off-topic

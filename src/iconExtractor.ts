@@ -1,13 +1,16 @@
 import { ICON_DICT } from './iconDict.js';
-import type { WordTiming } from './types.js';
-
-export type IconEvent = {
-  start: number;
-  emoji: string;
-};
+import type { IconEvent, WordTiming } from './types.js';
 
 const COOLDOWN_SEC = 12;
 const MAX_PER_SECTION = 1;
+// Number of abstract corner motifs the renderer knows (IconOverlay.CornerMotif).
+const MOTIF_COUNT = 4;
+
+function hashStr(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h;
+}
 
 function normalize(token: string): string {
   return token.toLowerCase().replace(/[^a-z]/g, '');
@@ -73,5 +76,18 @@ export function extractIconEvents(
     events.push({ start: w.start, emoji: hit.emoji });
     lastUseByEmoji[hit.emoji] = w.start;
   }
+
+  // No faithful subject glyph matched (none in the dict, none in context, or the
+  // only match was already used elsewhere in the episode) → fall back to ONE
+  // abstract animated motif so the corner beat still lands instead of going
+  // blank (user directive: match the words with an icon, else use animation).
+  // It depicts nothing specific, so invariant #1 is trivially safe — pure
+  // decoration that asserts no creature or claim. The variant is chosen from the
+  // section context so different sections show different motifs (variety).
+  if (events.length === 0 && words.length > 0) {
+    const seed = words[Math.min(words.length - 1, Math.floor(words.length * 0.3))]!;
+    events.push({ start: seed.start, motif: hashStr(context) % MOTIF_COUNT });
+  }
+
   return events;
 }

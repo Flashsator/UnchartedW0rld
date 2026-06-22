@@ -349,7 +349,7 @@ async function main(): Promise<void> {
           `${s.heading} ${s.visual}`,
           usedIconEmojis,
         );
-        for (const ev of iconEvents) usedIconEmojis.add(ev.emoji);
+        for (const ev of iconEvents) if (ev.emoji) usedIconEmojis.add(ev.emoji);
         return {
           heading: s.heading,
           audioPath: s.mp3Path,

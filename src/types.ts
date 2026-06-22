@@ -125,9 +125,16 @@ export type SubtitleCue = {
   text: string;
 };
 
+// A corner overlay beat. `emoji` is a faithful subject glyph (depicts a subject
+// the narration actually names — decorative, invariant #1). When no glyph
+// matches the section's spoken-and-in-context words, `motif` carries an abstract
+// animated fallback (a number selecting a geometric motion graphic) instead, so
+// the beat still lands without asserting any creature. Exactly one of the two is
+// set.
 export type IconEvent = {
   start: number;
-  emoji: string;
+  emoji?: string;
+  motif?: number;
 };
 
 export type Interlude = {

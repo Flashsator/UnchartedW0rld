@@ -110,10 +110,14 @@ export async function muxAudio(
   }
 
   // Icon event audio pops: sub thump + bright tip aligned with each emoji
-  // overlay so the visual punch is also audible.
+  // overlay so the visual punch is also audible. Only the subject-glyph beats
+  // get a pop — the abstract-motif fallback (no emoji) is a quiet visual-only
+  // beat, so it stays an accent for real subject reveals instead of ticking on
+  // nearly every section.
   const popLabels: string[] = [];
   manifest.sections.forEach((sec, i) => {
     sec.iconEvents.forEach((ev, k) => {
+      if (!ev.emoji) return;
       const startSec = sectionStarts[i]! + ev.start;
       if (startSec < 0) return;
       const subDelay = Math.round(startSec * 1000);

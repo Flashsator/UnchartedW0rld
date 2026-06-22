@@ -12,7 +12,9 @@ import { animatedStatText } from '../lib/countUp';
 // clause names so a process beat reads as a tiny SCHEMATIC, not a text slide:
 //   2 icons → a relation diagram (A → B with a drawn connector + travelling pulse)
 //   1 icon → a focal node with concentric pulse rings
-//   0 icons → an editorial text card with the key word accented
+//   0 icons → an abstract animated motif (no creature) above the clause — we
+//             can't match the words to a faithful glyph, so we animate instead
+// (stat cards stay the editorial left block — the count-up number is the star)
 // All motion is transform/opacity only (compositor-friendly) and clamps to rest.
 
 const DEFAULT_ACCENT = '#FFC24A';
@@ -396,6 +398,32 @@ function FocalNode({
   );
 }
 
+// A focal motif with NO creature in the center — just a neutral glowing core —
+// for a fact clause that names no subject with a faithful emoji. The narration
+// can't be matched to an icon, so we animate instead (user directive): the
+// abstract motion asserts nothing (invariant #1 safe) yet keeps the card a
+// designed graphic beat rather than a flat text slide.
+function AbstractFocal({ accent, t, variant }: { accent: string; t: number; variant: number }) {
+  const corePop = interpolate(t, [0.1, 0.4], [0, 1], CLAMP);
+  const coreBreath = 1 + Math.sin(t * 1.2) * 0.05;
+  return (
+    <div style={{ position: 'relative', width: FOCAL, height: FOCAL, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <FocalMotif accent={accent} t={t} variant={variant} />
+      <div
+        style={{
+          width: FOCAL * 0.2,
+          height: FOCAL * 0.2,
+          borderRadius: '50%',
+          background: accent,
+          boxShadow: `0 0 60px ${hexA(accent, 0.85)}`,
+          opacity: corePop,
+          transform: `scale(${corePop * coreBreath})`,
+        }}
+      />
+    </div>
+  );
+}
+
 // Shared atmospheric backdrop: drifting accent wash + grain + vignette so the
 // card reads as part of the cinematic footage around it, not a flat panel.
 function CardBackdrop({ accent, t }: { accent: string; t: number }) {
@@ -570,53 +598,32 @@ export function FactCard({ spec }: { spec: BrollCard }) {
     );
   }
 
-  // Fact with no recognizable subject → editorial text card, key word accented.
-  const ruleScale = interpolate(t, [0.15, 0.75], [0, 1], CLAMP);
+  // Fact with no subject we can show faithfully → an abstract animated motif
+  // (no creature) above the clause, so the card stays a designed graphic beat
+  // instead of a flat text slide. Matches the 1/2-icon layouts; the clause is
+  // still verbatim narration (invariant #1 holds).
   return (
     <AbsoluteFill style={{ backgroundColor: '#0A0C0E' }}>
       <CardBackdrop accent={accent} t={t} />
       <AbsoluteFill
         style={{
           justifyContent: 'center',
-          alignItems: 'flex-start',
-          padding: '0 160px',
+          alignItems: 'center',
+          padding: '0 140px',
           opacity: fade,
           transform: `translateY(${lift + float}px)`,
         }}
       >
-        <div style={{ maxWidth: 1500 }}>
-          {spec.caption ? (
-            <div
-              style={{
-                fontFamily: FONT,
-                fontWeight: 700,
-                fontSize: 30,
-                color: accent,
-                letterSpacing: '0.24em',
-                textTransform: 'uppercase',
-                marginBottom: 22,
-              }}
-            >
-              {spec.caption}
-            </div>
-          ) : null}
-          <div
-            style={{
-              width: 140,
-              height: 4,
-              background: accent,
-              marginBottom: 34,
-              transform: `scaleX(${ruleScale})`,
-              transformOrigin: 'left center',
-            }}
-          />
+        <Kicker label={spec.caption ?? ''} accent={accent} t={t} />
+        <AbstractFocal accent={accent} t={t} variant={focalVariant(spec.headline)} />
+        <div style={{ maxWidth: 1300, marginTop: 48 }}>
           <WordCascade
             text={spec.headline}
             t={t}
-            fontSize={factSize(spec.headline, false)}
+            fontSize={factSize(spec.headline, true)}
             accent={accent}
-            align="left"
-            emphasizeLongest
+            align="center"
+            startAt={0.5}
           />
         </div>
       </AbsoluteFill>
