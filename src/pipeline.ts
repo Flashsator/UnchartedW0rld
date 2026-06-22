@@ -337,19 +337,34 @@ async function main(): Promise<void> {
     hook: episode.hook,
     coldOpenVisualPath,
     intro: { durationSec: COLD_OPEN_SEC },
-    sections: sectionAudios.map((s, i) => ({
-      heading: s.heading,
-      audioPath: s.mp3Path,
-      duration: s.duration,
-      gapAfterSec: INTER_SECTION_GAP_SEC,
-      brollPaths: broll[i]!,
-      cutTimes: cutTimesBySection[i]!,
-      words: s.words,
-      iconEvents: extractIconEvents(s.words, `${s.heading} ${s.visual}`),
-      overlays: episode.sections[i]?.overlays,
-      shotCards: shotCardsBySection[i]!,
-      shotStills: shotStillsBySection[i]!,
-    })),
+    sections: (() => {
+      // Track every overlay emoji used so far this episode so the corner icon
+      // never repeats the same glyph across sections (cross-section variety —
+      // not fewer icons). Sections render in order, so accumulating as we map
+      // makes each section avoid all earlier ones.
+      const usedIconEmojis = new Set<string>();
+      return sectionAudios.map((s, i) => {
+        const iconEvents = extractIconEvents(
+          s.words,
+          `${s.heading} ${s.visual}`,
+          usedIconEmojis,
+        );
+        for (const ev of iconEvents) usedIconEmojis.add(ev.emoji);
+        return {
+          heading: s.heading,
+          audioPath: s.mp3Path,
+          duration: s.duration,
+          gapAfterSec: INTER_SECTION_GAP_SEC,
+          brollPaths: broll[i]!,
+          cutTimes: cutTimesBySection[i]!,
+          words: s.words,
+          iconEvents,
+          overlays: episode.sections[i]?.overlays,
+          shotCards: shotCardsBySection[i]!,
+          shotStills: shotStillsBySection[i]!,
+        };
+      });
+    })(),
     interludes,
     outro: { durationSec: OUTRO_SUBSCRIBE_SEC, watchNextTitle: winningTitles[0] },
     bgmPath,

@@ -167,7 +167,14 @@ video, fully separate from `daily.yml`.
    (the always-on in-frame overlay-emoji path, independent of this gate), so
    broadening it affects live overlays too — but that path only fires when the
    matched word also appears in the section heading/visual context, so it can't
-   fabricate. Long-form only (Shorts untouched); render-side, no new state file.
+   fabricate. That overlay path also **de-dups the emoji across the whole
+   episode** (user directive: variety, not fewer icons) — `extractIconEvents`
+   takes an `avoidEmojis` set and `pipeline.ts` threads an episode-wide
+   `usedIconEmojis` Set through the in-order `sections.map` (each section avoids
+   every glyph used earlier and surfaces a DIFFERENT spoken-and-in-context
+   subject, or none, instead of repeating e.g. 🦉 every section). It only ever
+   SKIPS — invariant #1 holds (the spoken-AND-in-context gate is unchanged).
+   Long-form only (Shorts untouched); render-side, no new state file.
    This is a safety net, NOT a strategy — a real on-subject clip always wins; the
    goal is that a bad slot degrades to a clean designed card, never off-topic
    scenery.

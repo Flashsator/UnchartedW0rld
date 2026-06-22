@@ -45,9 +45,18 @@ function buildContextSet(context: string): Set<string> {
   return out;
 }
 
+// `avoidEmojis` carries the emoji already shown EARLIER in the same episode
+// (accumulated section-by-section by the caller) so the corner overlay never
+// repeats the same glyph across sections — variety, not fewer icons. A repeat
+// is skipped and scanning continues into the section's later words, so the
+// section can still surface a DIFFERENT matching subject (or none) instead of
+// stopping at the first already-used hit. Invariant #1 holds: the emoji is
+// decorative and only fires when its subject word is actually spoken AND in the
+// section's heading/visual context.
 export function extractIconEvents(
   words: WordTiming[],
   context: string,
+  avoidEmojis: ReadonlySet<string> = new Set(),
 ): IconEvent[] {
   const events: IconEvent[] = [];
   const lastUseByEmoji: Record<string, number> = {};
@@ -58,6 +67,7 @@ export function extractIconEvents(
     const hit = lookupEmoji(w.text);
     if (!hit) continue;
     if (!allowed.has(hit.key)) continue;
+    if (avoidEmojis.has(hit.emoji)) continue;
     const last = lastUseByEmoji[hit.emoji] ?? -Infinity;
     if (w.start - last < COOLDOWN_SEC) continue;
     events.push({ start: w.start, emoji: hit.emoji });
