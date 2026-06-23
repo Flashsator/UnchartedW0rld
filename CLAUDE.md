@@ -310,8 +310,15 @@ silently resets every run.
   (deliberately NOT a hard weighting — a young channel's sample is taste, not
   statistics). Any failure falls back silently to the model's own topic choice.
 - **Shorts loop seamlessly (by design):** `OUTRO_SEC = 0` in `src/shortsGen.ts` —
-  a Short ends exactly where its narration ends so it loops mid-curiosity
-  (replay rate is a Shorts ranking signal). The subscribe/watch-full end card in
+  a Short ends exactly where its narration ends so it loops cleanly
+  (replay rate is a Shorts ranking signal). NOTE (user directive 2026-06-23,
+  "分流"): the narration CONTENT is now SELF-CONTAINED — it resolves its own
+  posed question instead of cutting off mid-curiosity. The old cliffhanger drew
+  angry "what was the answer" comments AND the funnel it was meant to feed is
+  broken anyway (5.8% click-through; long views actually arrive via
+  `RELATED_VIDEO`), so it paid the goodwill cost for no benefit. The seamless
+  loop + hook re-arm stay exactly as below; what changed is the script no longer
+  strands the viewer mid-answer (see the Shorts-cut prompt rule below). The subscribe/watch-full end card in
   `ShortsScene.tsx` is kept for reversibility but only renders when
   `outroSec > 0`; the funnel lives in the description link (next bullet).
   To tighten the loop, `ShortsScene.tsx` re-fades the opening hook card back in
@@ -354,6 +361,19 @@ silently resets every run.
   person actually *says* (short, mostly a single clause, present tense, ~14 words
   max), not documentary prose, since the Shorts audio is reused verbatim from the
   long-form section and that prompt is the only lever on its spoken cadence.
+  **Self-contained payoff (user directive 2026-06-23, "分流"):** the TEASE applies
+  only to that FIRST sentence — the section BODY must then RESOLVE the specific
+  question it opened so a cold Short viewer gets a complete, satisfying answer
+  (then at most ONE soft forward pull, never a bare cliffhanger). Enforced in
+  `scriptGen.ts` by the `SELF-CONTAINED PAYOFF` bullet + the Pacing-rule
+  exception, which OVERRIDE the per-section role's generic "end on a hook into the
+  next" for sections 3/5. The section-0 same-day teaser keeps its mystery
+  cold-open line and sentence-2 promise tail unchanged (don't spoil the long
+  video) but now ALSO lands one small self-contained fact before its forward hook,
+  so the channel's highest-traffic Short stops cutting off cold. The episode's
+  single central reveal is still withheld to the template's reveal section, so
+  long-form retention is unaffected; invariant #1 holds because every resolved
+  beat is the model's own true narration (no new claim is invented).
 - **Shorts cut faster than the long-form (by design):** `SHORTS_CLIP_SEC = 3.4`
   in `src/config.ts` (the long-form `BROLL_CLIP_SEC` is 6) — a vertical,
   muted, fast-scrolled feed rewards energy, so the same narration gets ~50% more
