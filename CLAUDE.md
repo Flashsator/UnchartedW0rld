@@ -361,6 +361,21 @@ silently resets every run.
   person actually *says* (short, mostly a single clause, present tense, ~14 words
   max), not documentary prose, since the Shorts audio is reused verbatim from the
   long-form section and that prompt is the only lever on its spoken cadence.
+  **Lead with the phenomenon, not the mechanism (user directive 2026-06-24,
+  commit b8647b2 — the single biggest reach lever):** a `LEAD WITH THE PHENOMENON,
+  NOT THE MECHANISM` sub-rule (in the Shorts-cut rule + a `shortsHook` Shape
+  criterion) requires that opener to lead with the VISIBLE thing a stranger can
+  instantly picture — the behavior/WHAT, or a sharp question about it — NOT the
+  internal anatomy/mechanism/measurement that EXPLAINS it (that's the body's
+  payoff). Diagnosed from real analytics: the 6/22 owl episode's two Shorts
+  diverged ~5x — the phenomenon-first teaser ("an owl spins its head almost all
+  the way around — how?") got 756 views vs the mechanism-first sibling ("its neck
+  bones are full of holes wider than the arteries…") at 155, because the dry
+  mechanism opener loses the swipe-decision in the first ~2s even when it names
+  the subject. Prompt-only (`scriptGen.ts`), no logic/honesty-gate touched —
+  invariant #1 holds (it only reshapes which TRUE narration moment leads). This
+  REINFORCES, does not fight, the self-contained rule below: phenomenon/question
+  up front, mechanism + full resolution in the body.
   **Self-contained payoff (user directive 2026-06-23, "分流"):** the TEASE applies
   only to that FIRST sentence — the section BODY must then RESOLVE the specific
   question it opened so a cold Short viewer gets a complete, satisfying answer
