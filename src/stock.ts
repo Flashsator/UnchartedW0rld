@@ -947,12 +947,172 @@ export async function fetchBroll(
   return clips;
 }
 
+// --- Hero-reuse shot assembly ------------------------------------------------
+// One beat = one INDIVIDUAL. A beat used to be filled with up to N *different*
+// downloaded clips, so a single narration moment could flash a dozen different
+// individuals of the subject (the "red spider suddenly becomes a green spider"
+// glitch). Instead each beat now locks exactly ONE "hero" clip and its extra
+// shot slots are cut from DIFFERENT time windows of that same hero — the
+// renderer's per-slot kenBurnsFor(clipIdx) varies the camera, so reused
+// segments read as "another shot of the same individual" rather than a new one.
+const MAX_DISTINCT_CLIPS_PER_BEAT = 1;
+
+// Expands a per-beat slot count into an ordered list of shots. Shot 0 of a beat
+// is the hero itself; reuseOrdinal ≥1 marks a reused segment of that hero.
+// Narration order is preserved (beats in order, slots in order). Pure and
+// exported for testing. e.g. planSectionShots([2,1]) ->
+// [{0,0},{0,1},{1,0}].
+export function planSectionShots(slotsPerBeat: number[]): Array<{ beatIndex: number; reuseOrdinal: number }> {
+  const shots: Array<{ beatIndex: number; reuseOrdinal: number }> = [];
+  for (let b = 0; b < slotsPerBeat.length; b++) {
+    const n = Math.max(0, Math.floor(slotsPerBeat[b] ?? 0));
+    for (let r = 0; r < n; r++) shots.push({ beatIndex: b, reuseOrdinal: r });
+  }
+  return shots;
+}
+
+// The ffmpeg [ss, ss+t] window for the `ordinal`-th reused segment of a hero
+// clip. Returns null when there is nothing to cut (ordinal 0, or the hero is no
+// longer than one shot — reuse the whole hero in that case). The window always
+// extends to the clip's end, so t ≥ perShotSec and the renderer never freezes on
+// a too-short segment. Pure and exported for testing.
+export function segmentWindow(ordinal: number, perShotSec: number, clipDurationSec: number): { ss: number; t: number } | null {
+  if (ordinal <= 0) return null;
+  if (!Number.isFinite(perShotSec) || !Number.isFinite(clipDurationSec)) return null;
+  if (perShotSec <= 0 || clipDurationSec <= 0) return null;
+  if (clipDurationSec <= perShotSec) return null;     // too short → reuse whole hero
+  const maxStart = clipDurationSec - perShotSec;
+  const ss = Math.min(ordinal * perShotSec, maxStart);
+  const t = clipDurationSec - ss;                     // extend to clip end; t ≥ perShot, never freezes
+  return { ss, t };
+}
+
+// Cuts the [ss, ss+t] window of a hero clip into a new file. The segment is the
+// same individual and framing, so it inherits the hero's dimensions, metadata,
+// and on-subject verdict. Best-effort: returns null on any ffmpeg/ffprobe
+// failure or a sub-1s result so the caller falls back to reusing the whole hero.
+async function cutClipSegment(
+  hero: BrollClip,
+  ss: number,
+  t: number,
+  cacheDir: string,
+): Promise<BrollClip | null> {
+  const dest = path.join(cacheDir, safeFilename(`seg_${brollSeq++}_${Date.now()}.mp4`));
+  try {
+    await run('ffmpeg', [
+      '-y', '-loglevel', 'error',
+      '-ss', ss.toFixed(2),
+      '-i', hero.path,
+      '-t', t.toFixed(2),
+      '-an',
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-pix_fmt', 'yuv420p',
+      dest,
+    ]);
+    const dur = await ffprobeDuration(dest);
+    if (!Number.isFinite(dur) || dur < 1) {
+      if (fs.existsSync(dest)) fs.unlinkSync(dest);
+      return null;
+    }
+    return {
+      path: dest,
+      duration: dur,
+      width: hero.width,
+      height: hero.height,
+      meta: hero.meta,
+      onSubject: hero.onSubject,
+    };
+  } catch (e) {
+    log(`Clip segment cut failed: ${(e as Error).message}`);
+    if (fs.existsSync(dest)) {
+      try { fs.unlinkSync(dest); } catch { /* best-effort cleanup */ }
+    }
+    return null;
+  }
+}
+
+// The hero clip for beat `i`: its own hero if found, else the nearest neighbor's
+// hero (searched outward) so a beat whose query came up empty still reuses an
+// on-section individual instead of dropping the slot. Null only when no beat in
+// the section found anything.
+function heroForBeat(heroes: (BrollClip | null)[], i: number): BrollClip | null {
+  if (heroes[i]) return heroes[i]!;
+  for (let d = 1; d < heroes.length; d++) {
+    if (heroes[i - d]) return heroes[i - d]!;
+    if (heroes[i + d]) return heroes[i + d]!;
+  }
+  return null;
+}
+
+// Builds `needed` shots across the ordered `queries`, locking ONE hero per beat
+// and filling the rest of each beat's slots with distinct segments of that hero
+// (see the hero-reuse note above). Downloads at most one clip per beat (only for
+// beats that own a slot), so a section shows one individual per beat. perShot is
+// the section's seconds-per-shot, used to size each reused segment window.
+async function assembleHeroReuseShots(
+  queries: string[],
+  needed: number,
+  perShot: number,
+  cacheDir: string,
+  usedUrls: Set<string>,
+  sourcesUsed: Set<string> | undefined,
+  commonsCredits: ImageCredit[] | undefined,
+  opts: BrollFetchOpts,
+): Promise<BrollClip[]> {
+  const allocation = allocateClipsAcrossBeats(needed, queries.length);
+
+  // One hero download per beat that owns ≥1 slot. heroes[i] is null when beat i
+  // got no slot or its query found nothing.
+  const heroes: (BrollClip | null)[] = [];
+  for (let i = 0; i < queries.length; i++) {
+    if (allocation[i]! <= 0) {
+      heroes.push(null);
+      continue;
+    }
+    const got = await fetchClipsForQuery(
+      queries[i]!,
+      MAX_DISTINCT_CLIPS_PER_BEAT,
+      cacheDir,
+      usedUrls,
+      sourcesUsed,
+      commonsCredits,
+      opts,
+    );
+    heroes.push(got[0] ?? null);
+  }
+
+  // Realize each planned shot: ordinal 0 is the hero, ordinal ≥1 is a distinct
+  // time-window cut of the SAME hero.
+  const shots: BrollClip[] = [];
+  for (const { beatIndex, reuseOrdinal } of planSectionShots(allocation)) {
+    const hero = heroForBeat(heroes, beatIndex);
+    if (!hero) continue;
+    if (reuseOrdinal === 0) {
+      shots.push(hero);
+      continue;
+    }
+    const win = segmentWindow(reuseOrdinal, perShot, hero.duration);
+    const seg = win ? await cutClipSegment(hero, win.ss, win.t, cacheDir) : null;
+    // No distinct segment could be cut (hero too short to subdivide, or the cut
+    // failed) — DROP this extra slot rather than push the hero's frame-0 footage
+    // a second time, which would show two identical opening shots back to back.
+    // The hero (ordinal 0) is always kept, and computeCutTimes re-spreads the
+    // section over the returned clip count, so a shorter list stays consistent.
+    if (!seg) continue;
+    shots.push(seg);
+  }
+  return shots;
+}
+
 // Fetches footage that tracks the narration beat by beat. `beats` is an ordered
 // list of stock queries (one per narration moment). The total clip count is
 // still sized to the section duration so the cut rhythm matches a single-query
-// section, but it is distributed across the beats IN ORDER — so each shot
-// depicts what is being said at that point in the narration. Beats whose query
-// comes up short are topped up by re-querying the remaining beats in order.
+// section, and it is distributed across the beats IN ORDER — so each shot
+// depicts what is being said at that point in the narration. Each beat locks ONE
+// hero clip and reuses distinct segments of it for its extra slots
+// (assembleHeroReuseShots), so a section never flashes a dozen different
+// individuals of the subject.
 export async function fetchBrollForBeats(
   beats: string[],
   sectionDuration: number,
@@ -964,7 +1124,7 @@ export async function fetchBrollForBeats(
   // Seconds-per-shot for this section (defaults to BROLL_CLIP_SEC). The narrative
   // arc passes a smaller value for montage-paced sections and a larger one for
   // calm ones, so the cut cadence varies across the episode instead of holding a
-  // flat ~5s metronome (see sectionClipSeconds in cuts.ts).
+  // flat metronome (see sectionClipSeconds in cuts.ts).
   clipSec: number = BROLL_CLIP_SEC,
 ): Promise<BrollClip[]> {
   const cacheDir = ensureDir(path.join(workDir, 'broll'));
@@ -975,36 +1135,16 @@ export async function fetchBrollForBeats(
   // At least one clip per beat, but never fewer than the pace-adjusted duration.
   const perShot = clipSec > 0 ? clipSec : BROLL_CLIP_SEC;
   const needed = Math.max(queries.length, Math.ceil(sectionDuration / perShot));
-  const allocation = allocateClipsAcrossBeats(needed, queries.length);
-
-  const clips: BrollClip[] = [];
-  for (let i = 0; i < queries.length; i++) {
-    const got = await fetchClipsForQuery(
-      queries[i]!,
-      allocation[i]!,
-      cacheDir,
-      usedUrls,
-      sourcesUsed,
-      commonsCredits,
-      opts,
-    );
-    clips.push(...got);
-  }
-
-  // Some beat queries can come up short (obscure scenes). Top back up to the
-  // duration-based count by re-querying beats in order, holding the cut pace.
-  for (let i = 0; i < queries.length && clips.length < needed; i++) {
-    const got = await fetchClipsForQuery(
-      queries[i]!,
-      needed - clips.length,
-      cacheDir,
-      usedUrls,
-      sourcesUsed,
-      commonsCredits,
-      opts,
-    );
-    clips.push(...got);
-  }
+  const clips = await assembleHeroReuseShots(
+    queries,
+    needed,
+    perShot,
+    cacheDir,
+    usedUrls,
+    sourcesUsed,
+    commonsCredits,
+    opts,
+  );
 
   if (clips.length === 0) {
     throw new Error(
@@ -1018,7 +1158,10 @@ export async function fetchBrollForBeats(
 // Short already has the long section's landscape clips (center-cropped by the
 // renderer) as a working fallback, so this returns whatever portrait footage
 // it found — possibly [] — instead of throwing. Beats are queried in narration
-// order; later beats may get nothing when the trimmed Short doesn't need them.
+// order; like the long-form path, each beat locks ONE hero clip and reuses
+// distinct segments of it for its extra slots (assembleHeroReuseShots), so a
+// Short never flashes a different individual every cut. Cuts faster than the
+// long-form via the tighter SHORTS_CLIP_SEC quota.
 export async function fetchShortsBroll(
   beats: string[],
   narrationSec: number,
@@ -1030,38 +1173,17 @@ export async function fetchShortsBroll(
   const queries = beats.map((b) => b.trim()).filter(Boolean);
   if (queries.length === 0) return [];
   const opts: BrollFetchOpts = { orientation: 'portrait', pixabayCategory };
-  // Shorts cut faster than the long-form, so fetch to the tighter SHORTS_CLIP_SEC
-  // quota — enough portrait clips to fill the quicker cut cadence (pipeline's
-  // clipQuota uses the same constant).
   const needed = Math.max(1, Math.ceil(narrationSec / SHORTS_CLIP_SEC));
-  const allocation = allocateClipsAcrossBeats(needed, queries.length);
-
-  const clips: BrollClip[] = [];
-  for (let i = 0; i < queries.length; i++) {
-    const got = await fetchClipsForQuery(
-      queries[i]!,
-      allocation[i]!,
-      cacheDir,
-      usedUrls,
-      undefined,
-      undefined,
-      opts,
-    );
-    clips.push(...got);
-  }
-  for (let i = 0; i < queries.length && clips.length < needed; i++) {
-    const got = await fetchClipsForQuery(
-      queries[i]!,
-      needed - clips.length,
-      cacheDir,
-      usedUrls,
-      undefined,
-      undefined,
-      opts,
-    );
-    clips.push(...got);
-  }
-  return clips;
+  return assembleHeroReuseShots(
+    queries,
+    needed,
+    SHORTS_CLIP_SEC,
+    cacheDir,
+    usedUrls,
+    undefined,
+    undefined,
+    opts,
+  );
 }
 
 function listLocalMp3sRecursive(dir: string): string[] {

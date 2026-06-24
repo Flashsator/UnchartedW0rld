@@ -238,11 +238,15 @@ export const INTER_SECTION_GAP_SEC = 1.8;
 export const TTS_VOICE_FALLBACK = 'en-US-GuyNeural';
 export const TTS_RATE = '-2%';
 
-// Long-form seconds-per-shot baseline. Raised 5 → 6 to slow the cut cadence:
+// Long-form seconds-per-shot baseline. Raised 6 → 7 to slow the cut cadence:
 // shot count per section = max(beats, ceil(duration / perShot)), so a larger
-// baseline yields ~15% fewer cuts (long-form anti-fatigue). Shorts keep their
-// own faster SHORTS_CLIP_SEC and are unaffected.
-export const BROLL_CLIP_SEC = 6;
+// baseline yields fewer cuts (long-form anti-fatigue) AND widens each hero
+// clip's reuse window — a beat's extra shot slots are cut from distinct moments
+// of the SAME individual (assembleHeroReuseShots/segmentWindow in stock.ts)
+// instead of stacking different downloaded individuals, so a section no longer
+// flashes a dozen different individuals of the subject. Shorts keep their own
+// faster SHORTS_CLIP_SEC and are unaffected.
+export const BROLL_CLIP_SEC = 7;
 
 // --- Rest-beat stills (long-form anti-fatigue) -------------------------------
 // ONE shot per section is rendered as a genuine STILL (prefers an on-subject
@@ -251,10 +255,14 @@ export const BROLL_CLIP_SEC = 6;
 export const REST_STILLS_PER_SECTION = Number(process.env.REST_STILLS_PER_SECTION ?? 1);
 export const REST_STILL_MIN_CLIPS = Number(process.env.REST_STILL_MIN_CLIPS ?? 3);
 // Shorts cut faster than the long-form (a vertical, muted, fast-scrolled feed
-// rewards energy): a Short holds each shot ~3.4s vs the long-form 5s, so the
-// same narration gets ~50% more cuts. Drives both the portrait-clip fetch quota
-// (fetchShortsBroll) and the Short's cut-time count (pipeline clipQuota).
-export const SHORTS_CLIP_SEC = 3.4;
+// rewards energy): a Short holds each shot ~4.0s vs the long-form 7s, so the
+// same narration still gets noticeably more cuts. Drives both the portrait-clip
+// fetch quota (fetchShortsBroll) and the Short's cut-time count (pipeline
+// clipQuota). Raised 3.4 → 4.0 alongside the hero-reuse change: a Short's extra
+// shot slots are now cut from distinct moments of the SAME hero clip per beat
+// (assembleHeroReuseShots/segmentWindow in stock.ts), so a slightly longer hold
+// keeps each reused segment comfortably above the per-shot window.
+export const SHORTS_CLIP_SEC = 4.0;
 export const BROLL_MIN_HEIGHT = 1080;
 
 // Background-music level (0–1) mixed under the narration by ffmpeg (see mux.ts).

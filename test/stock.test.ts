@@ -9,10 +9,12 @@ import {
   pexelsSlugText,
   pickBestVideoFile,
   pixabayCategoryForSeries,
+  planSectionShots,
   preferredMoods,
   moodFromPath,
   parseCommonsResults,
   relaxedQueryVariants,
+  segmentWindow,
   stripHtml,
 } from '../src/stock.js';
 
@@ -49,6 +51,75 @@ test('allocation always sums to needed', () => {
 
 test('zero beats yields an empty allocation', () => {
   assert.deepEqual(allocateClipsAcrossBeats(5, 0), []);
+});
+
+// --- planSectionShots --------------------------------------------------------
+
+test('planSectionShots expands per-beat slots in narration order', () => {
+  assert.deepEqual(planSectionShots([2, 1]), [
+    { beatIndex: 0, reuseOrdinal: 0 },
+    { beatIndex: 0, reuseOrdinal: 1 },
+    { beatIndex: 1, reuseOrdinal: 0 },
+  ]);
+});
+
+test('planSectionShots marks the first shot of each beat as the hero (ordinal 0)', () => {
+  const shots = planSectionShots([3, 2]);
+  // Exactly one ordinal-0 (hero) per beat.
+  const heroes = shots.filter((s) => s.reuseOrdinal === 0).map((s) => s.beatIndex);
+  assert.deepEqual(heroes, [0, 1]);
+  // Total shots equals the sum of the slot counts.
+  assert.equal(shots.length, 5);
+});
+
+test('planSectionShots skips beats with zero (or negative/fractional) slots', () => {
+  assert.deepEqual(planSectionShots([0, 2]), [
+    { beatIndex: 1, reuseOrdinal: 0 },
+    { beatIndex: 1, reuseOrdinal: 1 },
+  ]);
+  assert.deepEqual(planSectionShots([-1, 1.9]), [{ beatIndex: 1, reuseOrdinal: 0 }]);
+});
+
+test('planSectionShots returns empty for an empty allocation', () => {
+  assert.deepEqual(planSectionShots([]), []);
+});
+
+// --- segmentWindow -----------------------------------------------------------
+
+test('segmentWindow returns null for the hero shot (ordinal 0)', () => {
+  assert.equal(segmentWindow(0, 7, 20), null);
+});
+
+test('segmentWindow returns null when the clip is no longer than one shot', () => {
+  assert.equal(segmentWindow(1, 7, 7), null);
+  assert.equal(segmentWindow(1, 7, 5), null);
+});
+
+test('segmentWindow cuts a distinct later window that extends to the clip end', () => {
+  const win = segmentWindow(1, 7, 20);
+  assert.deepEqual(win, { ss: 7, t: 13 });
+});
+
+test('segmentWindow clamps the start so the window never runs past the clip end', () => {
+  // ordinal 3 * 7 = 21 > maxStart (20 - 7 = 13) → clamp to 13.
+  const win = segmentWindow(3, 7, 20);
+  assert.deepEqual(win, { ss: 13, t: 7 });
+});
+
+test('segmentWindow guarantees t >= perShot so a segment never freezes', () => {
+  for (const ordinal of [1, 2, 3, 5, 9]) {
+    for (const dur of [8, 10, 15, 30]) {
+      const win = segmentWindow(ordinal, 7, dur);
+      if (win) assert.ok(win.t >= 7, `t<perShot for ordinal=${ordinal} dur=${dur}`);
+    }
+  }
+});
+
+test('segmentWindow rejects non-finite or non-positive inputs', () => {
+  assert.equal(segmentWindow(1, 0, 20), null);
+  assert.equal(segmentWindow(1, 7, 0), null);
+  assert.equal(segmentWindow(1, NaN, 20), null);
+  assert.equal(segmentWindow(1, 7, Infinity), null);
 });
 
 test('preferredMoods picks the dominant mood from music tags', () => {
