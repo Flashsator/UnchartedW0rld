@@ -1146,12 +1146,36 @@ export async function fetchBrollForBeats(
     opts,
   );
 
+  // An empty result is NOT thrown: a section whose every beat came up empty
+  // across providers → Commons → Unsplash is a genuinely unfilmable subject
+  // (invariant #3, which the topic-demand gate blocks upstream). The caller
+  // (pipeline) reads an empty return as the signal to backfill on-subject
+  // footage borrowed from other sections rather than hard-failing the whole run.
+  // The `queries.length === 0` throw above is deliberately KEPT separate: that's
+  // an upstream script-gen defect (a section with no beats at all) that must
+  // surface, not be papered over with borrowed footage.
   if (clips.length === 0) {
-    throw new Error(
-      `No b-roll for any beat of [${queries.join(' | ')}] — check stock API keys`,
-    );
+    log(`No b-roll for any beat of [${queries.join(' | ')}] — caller will backfill from other sections`);
   }
   return clips;
+}
+
+// Last-resort cross-section backfill (pure). A section reaches here only when
+// EVERY one of its beats came up empty across providers → Commons → Unsplash AND
+// no sibling beat in the section had footage to borrow (heroForBeat), i.e. a
+// genuinely unfilmable subject — the invariant #3 smell the topic-demand gate
+// now blocks upstream. The episode subject is constant, so footage already
+// fetched for OTHER sections is still on-subject: reuse it here rather than
+// hard-failing the whole run at step 3/8. Cycles the pool so a long section gets
+// variety instead of one clip looped. Returns [] when the pool is empty (no
+// footage anywhere yet — the caller then fails loudly, since a video with zero
+// footage must never ship). NOT a strategy — a real on-subject fetch always
+// wins; this only keeps a partial-failure run alive and on-topic.
+export function backfillSectionClips(pool: readonly BrollClip[], needed: number): BrollClip[] {
+  if (pool.length === 0 || needed <= 0) return [];
+  const out: BrollClip[] = [];
+  for (let i = 0; i < needed; i++) out.push(pool[i % pool.length]!);
+  return out;
 }
 
 // Portrait-native b-roll for one Short (#6). Best-effort BY DESIGN: every

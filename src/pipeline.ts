@@ -28,6 +28,7 @@ import {
 import { generateEpisode, generateShortsBlurb, translateMetadata } from './scriptGen.js';
 import { synthesize } from './tts.js';
 import {
+  backfillSectionClips,
   fetchAmbient,
   fetchBgm,
   fetchBroll,
@@ -182,6 +183,14 @@ async function main(): Promise<void> {
   // Index-aligned to each section's broll paths: the rest-beat still image
   // (relative asset path) for any slot picked as a pause, else null.
   const shotStillsBySection: (string | null)[][] = [];
+  // On-subject footage collected across sections so far. The episode subject is
+  // constant, so a clip fetched for one section is still on-subject for any
+  // other — this pool is the LAST-RESORT backfill if a section's every beat
+  // comes up empty (a truly unfilmable subject; invariant #3, which the topic
+  // gate now blocks upstream). Borrowing keeps the run alive and on-topic
+  // instead of hard-failing at step 3/8 the way a bare fetchBrollForBeats throw
+  // would; the run still fails loudly only if NO section anywhere got footage.
+  const collectedClips: BrollClip[] = [];
   for (let i = 0; i < sectionAudios.length; i++) {
     const sec = sectionAudios[i]!;
     // Ordered per-beat shot list (subject-anchored in scriptGen) so footage
@@ -194,7 +203,11 @@ async function main(): Promise<void> {
     // isn't a flat ~5s metronome (the single biggest cause of mid-video visual
     // fatigue): patient open, montage near the climax, calmer finale.
     const clipSec = sectionClipSeconds(i, sectionAudios.length, BROLL_CLIP_SEC);
-    const clips = await fetchBrollForBeats(
+    // fetchBrollForBeats returns [] (not a throw) when this section's every beat
+    // came up empty; only a genuine defect (a section with no beats at all, or an
+    // FS error) throws, and that propagates to fail the run loudly. So branch on
+    // length here rather than catching — a real bug is never masked by a backfill.
+    let clips = await fetchBrollForBeats(
       beats,
       sec.duration,
       runDir,
@@ -204,6 +217,30 @@ async function main(): Promise<void> {
       { pixabayCategory, subject: episode.subject },
       clipSec,
     );
+    if (clips.length > 0) {
+      // Pool every fetched clip for the cross-section backfill net below.
+      collectedClips.push(...clips);
+    } else {
+      // This section's every beat came up empty across providers → Commons →
+      // Unsplash (a genuinely unfilmable subject; invariant #3, blocked upstream
+      // by the topic gate). Don't kill the whole run: borrow on-subject footage
+      // already fetched for other sections (the subject is constant), the same
+      // degrade philosophy as the interlude breather. Only a totally unfilmable
+      // episode — nothing pooled anywhere — still fails, and loudly (a video with
+      // no footage must not ship).
+      const needed = Math.max(1, Math.ceil(sec.duration / clipSec));
+      clips = backfillSectionClips(collectedClips, needed);
+      if (clips.length === 0) {
+        throw new Error(
+          `Section ${i + 1}/${sectionAudios.length} b-roll empty and no footage to borrow ` +
+            `(episode subject is unfilmable — invariant #3)`,
+        );
+      }
+      log(
+        `Section ${i + 1}/${sectionAudios.length} b-roll empty — backfilled ${clips.length} on-subject ` +
+          `clip(s) borrowed from other sections (invariant #3 smell — subject may be hard to film)`,
+      );
+    }
     const paths = clips.map((c) => relAsset(runDir, c.path));
     const totalSec = sec.duration + INTER_SECTION_GAP_SEC;
     const cutTimes = computeCutTimes(sec.words, totalSec, paths.length);

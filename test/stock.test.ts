@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   allocateClipsAcrossBeats,
+  backfillSectionClips,
   filterAndRankByRelevance,
   interleaveRoundRobin,
   isPermissiveLicense,
@@ -17,6 +18,7 @@ import {
   segmentWindow,
   stripHtml,
 } from '../src/stock.js';
+import type { BrollClip } from '../src/types.js';
 
 test('distributes evenly when it divides', () => {
   assert.deepEqual(allocateClipsAcrossBeats(6, 3), [2, 2, 2]);
@@ -51,6 +53,40 @@ test('allocation always sums to needed', () => {
 
 test('zero beats yields an empty allocation', () => {
   assert.deepEqual(allocateClipsAcrossBeats(5, 0), []);
+});
+
+// --- backfillSectionClips ----------------------------------------------------
+
+const bclip = (p: string): BrollClip => ({ path: p, duration: 6, width: 1920, height: 1080 });
+
+test('backfillSectionClips cycles the pool to fill the needed count with variety', () => {
+  const pool = [bclip('a'), bclip('b'), bclip('c')];
+  assert.deepEqual(backfillSectionClips(pool, 5).map((c) => c.path), ['a', 'b', 'c', 'a', 'b']);
+});
+
+test('backfillSectionClips returns exactly the pool when needed matches its size', () => {
+  const pool = [bclip('a'), bclip('b')];
+  assert.deepEqual(backfillSectionClips(pool, 2).map((c) => c.path), ['a', 'b']);
+});
+
+test('backfillSectionClips returns [] when the pool is empty (caller then fails loudly)', () => {
+  assert.deepEqual(backfillSectionClips([], 4), []);
+});
+
+test('backfillSectionClips returns [] for a non-positive needed count', () => {
+  const pool = [bclip('a')];
+  assert.deepEqual(backfillSectionClips(pool, 0), []);
+  assert.deepEqual(backfillSectionClips(pool, -3), []);
+});
+
+test('backfillSectionClips degrades to a single pooled clip when only one is available', () => {
+  // Degenerate last resort: one on-subject clip held across the section beats
+  // beats a crashed run; the renderer's Ken Burns still gives it motion.
+  assert.deepEqual(backfillSectionClips([bclip('only')], 3).map((c) => c.path), [
+    'only',
+    'only',
+    'only',
+  ]);
 });
 
 // --- planSectionShots --------------------------------------------------------
