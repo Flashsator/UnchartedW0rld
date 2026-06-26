@@ -44,6 +44,15 @@ export interface ScoredCandidate extends TopicCandidate {
 // demand we can still rank into.
 const SATURATED_MEDIAN = 2_000_000;
 const NO_DEMAND_MEDIAN = 15_000;
+// A band candidate whose FLOOR is below this is a mirage: its median clears the
+// demand floor only because one or two viral outliers prop it up, while the rest
+// of the top hits barely register — so the "demand" isn't real and the subject is
+// almost always a thin, hard-to-film niche. The 6/26 plants run picked "dodder"
+// (median 925k but floor 3 — the ONLY in-band candidate, so it won by default),
+// which then had no stock footage and crashed the pipeline (invariant #3). Such a
+// candidate is dropped from the winnable band; the floor-based fallback below
+// still rescues a real topic instead of returning null. Tunable.
+const MIN_FLOOR_VIEWS = 100;
 
 function getClient() {
   if (!YT_CLIENT_ID || !YT_CLIENT_SECRET || !YT_REFRESH_TOKEN) {
@@ -93,17 +102,21 @@ export function parseCandidates(raw: string, max: number = TOPIC_CANDIDATE_COUNT
 // channel: the top-median queries are saturated mega-niches owned by huge
 // channels we can't out-rank, and the very-low-median queries have no audience
 // to capture. So we first keep only candidates inside the winnable band
-// [NO_DEMAND_MEDIAN, SATURATED_MEDIAN]; among those we prefer the highest FLOOR
-// (every top hit pulls real views = broad, repeatable demand rather than one
-// viral outlier inflating the median), tie-broken by the higher median. Zero-
-// scored candidates (no results / no stats) can never win, so when every probe
-// failed — or nothing landed in the band — we fall back accordingly and the
-// model keeps its own choice.
+// [NO_DEMAND_MEDIAN, SATURATED_MEDIAN] whose FLOOR also clears MIN_FLOOR_VIEWS
+// (the band median must be real demand, not one viral outlier inflating it over a
+// thin niche — see MIN_FLOOR_VIEWS); among those we prefer the highest FLOOR
+// (every top hit pulls real views = broad, repeatable demand), tie-broken by the
+// higher median. Zero-scored candidates (no results / no stats) can never win, so
+// when every probe failed — or nothing landed in the band — we fall back
+// accordingly and the model keeps its own choice.
 export function pickBestCandidate(scored: ScoredCandidate[]): ScoredCandidate | null {
   const withDemand = scored.filter((c) => c.medianViews > 0);
   if (withDemand.length === 0) return null;
   const winnable = withDemand.filter(
-    (c) => c.medianViews >= NO_DEMAND_MEDIAN && c.medianViews <= SATURATED_MEDIAN,
+    (c) =>
+      c.medianViews >= NO_DEMAND_MEDIAN &&
+      c.medianViews <= SATURATED_MEDIAN &&
+      c.floorViews >= MIN_FLOOR_VIEWS,
   );
   const pool = winnable.length > 0 ? winnable : withDemand;
   return pool.reduce<ScoredCandidate | null>((acc, c) => {

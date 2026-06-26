@@ -89,6 +89,30 @@ test('falls back to best available when nothing lands in the winnable band', () 
   assert.equal(pickBestCandidate(scored)?.subject, 'less-tiny');
 });
 
+test('drops an in-band candidate whose floor is a mirage (6/26 dodder failure)', () => {
+  // The real 6/26 plants run: only "dodder" lands in the median band, but its
+  // floor is 3 — the median is one viral video over a thin niche with no stock
+  // footage. It must NOT win by default; fall back to the highest real floor.
+  const scored = [
+    CAND({ subject: 'dodder', medianViews: 925_000, floorViews: 3 }),
+    CAND({ subject: 'mistletoe', medianViews: 14_000, floorViews: 371 }),
+    CAND({ subject: 'spanish moss', medianViews: 7_000, floorViews: 469 }),
+  ];
+  const best = pickBestCandidate(scored);
+  assert.notEqual(best?.subject, 'dodder');
+  assert.equal(best?.subject, 'spanish moss');
+});
+
+test('a band candidate with a real floor beats an in-band mirage-floor rival', () => {
+  const scored = [
+    // In band on median, but floor is a mirage — excluded from the band.
+    CAND({ subject: 'mirage', medianViews: 1_500_000, floorViews: 10 }),
+    // Lower median, still in band, with genuine demand depth — the right pick.
+    CAND({ subject: 'real', medianViews: 50_000, floorViews: 8_000 }),
+  ];
+  assert.equal(pickBestCandidate(scored)?.subject, 'real');
+});
+
 test('returns null when every candidate scored zero (all probes failed)', () => {
   const scored = [
     CAND({ medianViews: 0, floorViews: 0 }),
