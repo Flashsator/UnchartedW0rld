@@ -54,6 +54,7 @@ import { computeCutTimes, pickRestSlots, sectionClipSeconds } from './cuts.js';
 import { buildShortsManifest, planShortsForToday, publishAtFor } from './shortsGen.js';
 import type {
   BrollCard,
+  BrollClip,
   Episode,
   ImageCredit,
   Interlude,
@@ -286,16 +287,31 @@ async function main(): Promise<void> {
       log(`Interlude ${k + 1}/${interludeCount} skipped — no ambient audio available`);
       continue;
     }
+    // The interlude is a non-essential breather. Its visual uses the bare subject
+    // query and shares the already-drained `used` set, so on an obscure subject
+    // the sections can consume every on-topic clip and leave this fetch empty —
+    // fetchBroll then throws. Never let a missing breather kill an otherwise
+    // complete run (steps 1–4 already succeeded): degrade by skipping this one
+    // interlude, exactly like the no-ambient-audio case above.
+    let visuals: BrollClip[];
+    try {
+      visuals = await fetchBroll(
+        interludeVisualQuery,
+        INTERLUDE_SEC,
+        runDir,
+        used,
+        footageUsed,
+        imageCredits,
+        { pixabayCategory },
+      );
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      log(`Interlude ${k + 1}/${interludeCount} skipped — no b-roll for "${interludeVisualQuery}": ${reason}`);
+      continue;
+    }
+    // Only credit the ambient track once the breather is actually kept, so the
+    // attribution block never lists a track for an interlude we dropped.
     musicCredits.push(ambient.credit);
-    const visuals = await fetchBroll(
-      interludeVisualQuery,
-      INTERLUDE_SEC,
-      runDir,
-      used,
-      footageUsed,
-      imageCredits,
-      { pixabayCategory },
-    );
     // The breather doubles as an act break: title the chapter it leads into so
     // the viewer's eye lands on a fresh, designed beat instead of more footage.
     const nextHeading = sectionAudios[interludePositions[k]! + 1]?.heading?.trim();
