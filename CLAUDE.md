@@ -401,6 +401,36 @@ silently resets every run.
   single central reveal is still withheld to the template's reveal section, so
   long-form retention is unaffected; invariant #1 holds because every resolved
   beat is the model's own true narration (no new claim is invented).
+  **Self-contained-arc ENFORCEMENT (user directive 2026-06-27, "做a和b" — beyond
+  the prompt steer above):** two structural levers now make the tease→answer arc
+  land inside the cut window instead of relying on the prompt alone.
+  **Lever A — marker-aligned cut:** the script writes a per-Short-section
+  `shortsArcSentences` (the 1-based sentence number where that section's arc is
+  COMPLETE, ≤6 / ≤140 words). `trimToBoundary` in `src/shortsGen.ts` cuts the
+  Short at exactly that sentence (via the pure `sentenceEndIndex`) when its end
+  lands in `[MIN_ARC_SEC 15s, MAX_SHORTS_SEC+0.5 = 55.5s]`, so the Short ends ON
+  the answer instead of the old blind fill dragging it into the next beat (which
+  then got chopped). A missing/garbage marker, one below 15s, one past the
+  section's sentence count, or one whose arc overflows the hard cap all degrade to
+  the original blind time-based cut — zero regression for older episodes.
+  **Lever B — text-stage verify + bounded regen** (`src/shortsArcQa.ts`): a
+  deterministic, always-on (no CLI) word-budget check (`shortsArcOverflowSections`
+  vs `SHORTS_ARC_MAX_WORDS = 148` ≈ 50s @178wpm) flags any Short section whose
+  marked arc would overflow the window, and `generateEpisode` treats that as a
+  third accept-last regen trigger alongside `collision`/`tooShort` (bounded by
+  `SCRIPT_GEN_ATTEMPTS = 2`, so it never stalls). On top of that a **gated** LLM
+  judge (`ENABLE_SHORTS_ARC_QA`, `'1'` in daily.yml, OFF locally) independently
+  verifies each Short opening both POSES and RESOLVES a question in the window,
+  CORRECTS the `shortsArcSentences` marker, and flags sections that never resolve
+  (→ regen). It runs only when the cheap checks are clear (no wasted CLI) and is
+  best-effort/non-fatal: any CLI/parse/timeout error keeps the episode unchanged.
+  `runClaudeCli` is INJECTED into `refineShortsArcs` to avoid a scriptGen↔shortsArcQa
+  import cycle. **Invariant #1 holds:** the judge only ever moves an integer cut
+  marker — narration, `shortsHook`, and overlays are never touched, and
+  `shortsArcSentences` is a cut index, never rendered text. Pure parts unit-tested
+  in `test/shortsGen.test.ts` (Lever A) and `test/shortsArcQa.test.ts` (Lever B).
+  Still a STEER + bounded retry, not a 100% guarantee, but now backed by a
+  structural cut + a verify→regen loop rather than the prompt alone.
 - **Shorts cut faster than the long-form (by design):** `SHORTS_CLIP_SEC = 4.0`
   in `src/config.ts` (the long-form `BROLL_CLIP_SEC` is 7) — a vertical,
   muted, fast-scrolled feed rewards energy, so the same narration gets ~50% more
@@ -503,7 +533,11 @@ silently resets every run.
   invariant #3; tune with `BROLL_CARD_MAX_PER_SECTION` / `BROLL_CARD_OFFSUBJECT_RATIO`,
   per-series accent hex in `SERIES_ACCENTS` in `src/config.ts`),
   `ENABLE_BROLL_VISION_QA` (vision relevance gate on b-roll selection, invariant
-  #3; tune with `BROLL_VISION_QA_MAX_CHECKS`).
+  #3; tune with `BROLL_VISION_QA_MAX_CHECKS`),
+  `ENABLE_SHORTS_ARC_QA` (LLM judge that verifies + corrects each Short's
+  self-contained tease→answer arc marker, gating only the judge — the
+  deterministic word-budget overflow regen runs always; see the
+  Self-contained-arc ENFORCEMENT note above).
 
 ## Conventions
 

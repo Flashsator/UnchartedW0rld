@@ -32,6 +32,14 @@ export type ScriptSection = {
   // older episodes — the teaser then falls back to the episode hook, off-day
   // sections to the chapter heading.
   shortsHook?: string;
+  // Sections 0, 3 and 5 only. The sentence NUMBER (counting this section's
+  // narration sentences from 1) by which its self-contained tease→answer arc is
+  // COMPLETE — the last sentence a cold Short viewer needs to hear to get the
+  // full answer to the hook. Only the section's opening ships as the Short, so
+  // the Short is cut at exactly this sentence (trimToBoundary in shortsGen) so a
+  // resolved answer is never chopped. Absent on other sections / older episodes —
+  // the cut then falls back to the blind time-based boundary.
+  shortsArcSentences?: number;
 };
 
 export type Episode = {

@@ -192,6 +192,13 @@ jobs:
           # (thin/wrong provider tags). Best-effort/non-fatal — disabled, any
           # infra error or an ambiguous verdict keeps the clip; long-form only.
           ENABLE_BROLL_VISION_QA: '1'
+          # Shorts self-contained-arc QA: after script-gen, an LLM judge verifies
+          # each Short section (0/3/5) both poses AND fully resolves its hook
+          # within the ~50s Short window, corrects its shortsArcSentences marker,
+          # and flags any that don't resolve so the script is regenerated
+          # (bounded, accept-last). The deterministic word-budget overflow check
+          # runs always (no CLI); only the judge is gated. Best-effort/non-fatal.
+          ENABLE_SHORTS_ARC_QA: '1'
           SERIES_KEY: ${{ inputs.series_key }}
           SUB_THEME: ${{ inputs.sub_theme }}
           STRUCTURE_KEY: ${{ inputs.structure_key }}

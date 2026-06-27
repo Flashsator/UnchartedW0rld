@@ -5,8 +5,10 @@ import {
   pickShortsHookText,
   planShortsForToday,
   publishAtFor,
+  sentenceEndIndex,
+  trimToBoundary,
 } from '../src/shortsGen.js';
-import type { Episode, RenderManifest } from '../src/types.js';
+import type { Episode, RenderManifest, WordTiming } from '../src/types.js';
 
 beforeEach(() => {
   // The override env would otherwise mask the real weekday argument under test.
@@ -230,4 +232,71 @@ test('pickShortsHookText: only the heading remains when narration and subject ar
     subject: undefined,
   });
   assert.equal(out, 'Chapter Label 3');
+});
+
+// --- Lever A: sentenceEndIndex + arc-aware trimToBoundary -----------------------
+
+function w(text: string, end: number): WordTiming {
+  return { start: Math.max(0, end - 1), end, text };
+}
+
+// 5 sentences ending at 10s / 20s / 30s / 45s / 52s of speech.
+const ARC_WORDS: WordTiming[] = [
+  w('An', 5), w('owl', 8), w('turns.', 10), // sentence 1 ends @10
+  w('It', 14), w('never', 17), w('tears.', 20), // sentence 2 ends @20
+  w('Here', 24), w('is', 27), w('why.', 30), // sentence 3 ends @30
+  w('Bones', 35), w('have', 40), w('holes.', 45), // sentence 4 ends @45
+  w('And', 48), w('more.', 52), // sentence 5 ends @52
+];
+
+test('sentenceEndIndex returns the WordTiming index that ends the nth sentence', () => {
+  assert.equal(sentenceEndIndex(ARC_WORDS, 1), 2);
+  assert.equal(sentenceEndIndex(ARC_WORDS, 2), 5);
+  assert.equal(sentenceEndIndex(ARC_WORDS, 3), 8);
+  assert.equal(sentenceEndIndex(ARC_WORDS, 5), 13);
+});
+
+test('sentenceEndIndex returns -1 for n<1 or beyond the sentence count', () => {
+  assert.equal(sentenceEndIndex(ARC_WORDS, 0), -1);
+  assert.equal(sentenceEndIndex(ARC_WORDS, 9), -1);
+});
+
+test('trimToBoundary cuts exactly at the marked arc sentence (Lever A)', () => {
+  const { words, endSec } = trimToBoundary(ARC_WORDS, 50, 3);
+  assert.equal(words.length, 9); // through sentence 3
+  assert.equal(words[words.length - 1]!.text, 'why.');
+  assert.ok(Math.abs(endSec - 30.3) < 1e-9);
+});
+
+test('trimToBoundary ignores a marker below MIN_ARC_SEC and blind-cuts instead', () => {
+  // Marker = sentence 1 ends @10s (< 15s MIN_ARC_SEC) → implausible "story",
+  // fall back to the blind cut (last sentence boundary under maxSec=50 → s4 @45).
+  const { words, endSec } = trimToBoundary(ARC_WORDS, 50, 1);
+  assert.equal(words.length, 12);
+  assert.equal(words[words.length - 1]!.text, 'holes.');
+  assert.ok(Math.abs(endSec - 45.3) < 1e-9);
+});
+
+test('trimToBoundary ignores a marker beyond the section sentence count', () => {
+  // 9 > 5 sentences → no such boundary → blind cut (s4 @45 under maxSec=50).
+  const { words } = trimToBoundary(ARC_WORDS, 50, 9);
+  assert.equal(words.length, 12);
+  assert.equal(words[words.length - 1]!.text, 'holes.');
+});
+
+test('trimToBoundary with no marker keeps the original blind time-based cut', () => {
+  const { words, endSec } = trimToBoundary(ARC_WORDS, 50);
+  assert.equal(words.length, 12); // last sentence ending under 50s is s4 @45
+  assert.ok(Math.abs(endSec - 45.3) < 1e-9);
+});
+
+test('trimToBoundary ignores a marker whose answer overflows the hard cap', () => {
+  // sentence 2 ends at 58s, past MAX_SHORTS_SEC+0.5 (55.5) → blind fallback.
+  const longWords: WordTiming[] = [
+    w('First', 20), w('claim.', 30), // sentence 1 ends @30
+    w('Second', 50), w('answer.', 58), // sentence 2 ends @58 (> 55.5)
+  ];
+  const { words } = trimToBoundary(longWords, 55, 2);
+  assert.equal(words.length, 2); // fell back to blind cut → only sentence 1 fits
+  assert.equal(words[words.length - 1]!.text, 'claim.');
 });

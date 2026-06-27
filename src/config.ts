@@ -186,6 +186,16 @@ export const ENABLE_BROLL_VISION_QA = process.env.ENABLE_BROLL_VISION_QA === '1'
 // model. Once one clip passes, this beat's remaining fills are trusted.
 export const BROLL_VISION_QA_MAX_CHECKS = Number(process.env.BROLL_VISION_QA_MAX_CHECKS ?? 2);
 
+// --- Shorts self-contained-arc QA (opt-in) ------------------------------------
+// When ENABLE_SHORTS_ARC_QA=1, after script-gen an LLM judge verifies each Short
+// section (0/3/5) both POSES and fully RESOLVES its hook within the ~50s Short
+// window, corrects each section's shortsArcSentences marker, and flags any that
+// don't resolve so generateEpisode regenerates (bounded, accept-last). The
+// deterministic word-budget overflow check (shortsArcOverflowSections) runs
+// ALWAYS (no CLI); only the judge is gated by this flag. Best-effort/non-fatal;
+// OFF locally, '1' in daily.yml. No new state file.
+export const ENABLE_SHORTS_ARC_QA = process.env.ENABLE_SHORTS_ARC_QA === '1';
+
 // Appended to every long-form description (after chapters, before attribution)
 // so each video carries a consistent channel pitch + subscribe CTA. The
 // ?sub_confirmation=1 link only opens the subscribe prompt on a /channel/UC...

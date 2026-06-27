@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import {
+  ENABLE_SHORTS_ARC_QA,
   SECTION_COUNT,
   TARGET_MINUTES,
   TARGET_WORDS,
@@ -10,6 +11,7 @@ import {
   type Voice,
 } from './config.js';
 import type { Episode, SectionOverlay } from './types.js';
+import { refineShortsArcs, shortsArcOverflowSections } from './shortsArcQa.js';
 import { log } from './utils.js';
 
 const wordsLo = Math.max(20, Math.round(WORDS_PER_SECTION * 0.85));
@@ -143,7 +145,8 @@ Shape:
       "visual": "string, 6-12 words — a SINGLE summary b-roll query for this whole section (subject + the section's main scene), used as the cold-open shot and a fallback. e.g. subject 'cave spider' -> 'cave spider crawling on wet rock in dark cave'. (Lead with the subject; no abstract/tangential shots — see B-ROLL RELEVANCE below.)",
       "visuals": ["3-6 strings, ORDERED to match this section's narration beat by beat. Split the narration into its successive moments and write ONE 6-12 word b-roll stock query per moment, in the SAME order they are spoken, so the footage shows what is being said as it is said. e.g. narration goes rest -> feed -> attack, so visuals = ['cave spider resting in a dark rock crevice','cave spider wrapping a moth in silk','cave spider lunging at prey in the dark']. Cover the whole section in order. (Lead each query with the subject — see B-ROLL RELEVANCE below.)"],
       "overlays": "optional array, 0-2 items, ONLY for sections 2, 3, 4, 5 — see Overlay Rules below",
-      "shortsHook": "REQUIRED for sections 0, 3 and 5 (write it for ALL THREE; omit the key on every other section): string, 8-14 words — a standalone curiosity hook used as the TITLE + on-screen card of the Short cut from this section. This single line is the entire reason a viewer stops scrolling, so it MUST: (1) name the concrete subject by its common name in the FIRST ~3 words ('A cat's tongue...', 'A mosquito pierces...'), never bury it behind setup; (2) be present tense, a single clause, and read like a line a person actually SAYS out loud (~8-14 words), not written prose; (3) make one complete, counterintuitive claim a viewer with ZERO context grasps instantly; (4) use 2nd person ('you', 'your') WHERE IT IS HONEST and raises the stakes ('A mosquito pierces your skin and you feel nothing'); (5) lead with the VISIBLE PHENOMENON a stranger can instantly picture, or a sharp question about it — NOT the internal anatomy, mechanism, or measurement that EXPLAINS it (that is the section's payoff, not its hook): 'An owl turns its head almost all the way around — how?' stops the scroll; 'An owl's neck bones are full of holes wider than its arteries' leads with dry mechanism and flops. It MUST NOT be an abstract or poetic noun-phrase, a Title-Case label, or a restatement of the episode title (BANNED, these flop: 'When Pollen Leaps the Gap', 'A Story of Survival', 'The Hidden Life of Bees'). It must NOT spoil the section's reveal. No clickbait lies: the claim must be real and actually delivered in the episode — never invent a number or fact for the hook. Section 0's spoken cold-open line may withhold the subject for mystery, so its shortsHook names the subject and teases the episode's central question without answering it."
+      "shortsHook": "REQUIRED for sections 0, 3 and 5 (write it for ALL THREE; omit the key on every other section): string, 8-14 words — a standalone curiosity hook used as the TITLE + on-screen card of the Short cut from this section. This single line is the entire reason a viewer stops scrolling, so it MUST: (1) name the concrete subject by its common name in the FIRST ~3 words ('A cat's tongue...', 'A mosquito pierces...'), never bury it behind setup; (2) be present tense, a single clause, and read like a line a person actually SAYS out loud (~8-14 words), not written prose; (3) make one complete, counterintuitive claim a viewer with ZERO context grasps instantly; (4) use 2nd person ('you', 'your') WHERE IT IS HONEST and raises the stakes ('A mosquito pierces your skin and you feel nothing'); (5) lead with the VISIBLE PHENOMENON a stranger can instantly picture, or a sharp question about it — NOT the internal anatomy, mechanism, or measurement that EXPLAINS it (that is the section's payoff, not its hook): 'An owl turns its head almost all the way around — how?' stops the scroll; 'An owl's neck bones are full of holes wider than its arteries' leads with dry mechanism and flops. It MUST NOT be an abstract or poetic noun-phrase, a Title-Case label, or a restatement of the episode title (BANNED, these flop: 'When Pollen Leaps the Gap', 'A Story of Survival', 'The Hidden Life of Bees'). It must NOT spoil the section's reveal. No clickbait lies: the claim must be real and actually delivered in the episode — never invent a number or fact for the hook. Section 0's spoken cold-open line may withhold the subject for mystery, so its shortsHook names the subject and teases the episode's central question without answering it.",
+      "shortsArcSentences": "REQUIRED for sections 0, 3 and 5 (write it for ALL THREE; omit the key on every other section): integer. The 1-based sentence NUMBER of THIS section's narration by which its self-contained tease→answer arc is COMPLETE — i.e. the last sentence a cold viewer must hear to get the full answer to the section's opening hook. Aim for 4-6 and NEVER more than 6; the narration through that sentence must be ≤140 words (~45-50s of speech). The Short is cut at exactly this sentence, so the entire hook-and-answer MUST land on or before it. If you cannot resolve the hook within ~6 sentences / ~140 words, pick a smaller, sharper question this section CAN fully answer in that window and mark where that answer lands."
     }
   ]
 }
@@ -222,6 +225,7 @@ Shorts cut rule (CRITICAL — sections 3 and 5 only):
 - Their FIRST sentence must stand alone for that cold viewer: name the subject by its common name and make one complete, hooky claim that needs zero prior context — while still advancing the long-form thread for the mid-episode viewer (a sharp restatement of exactly where the thread stands doubles as a cold open).
 - Make that first sentence the BIGGEST hook in the section — the single most surprising, visceral, scroll-stopping claim this section can make, front-loaded into the first ~2 seconds of speech (a Short lives or dies on its opening second). Frame it as a TEASE, never the payoff: pose the strange fact or question, do NOT reveal this section's resolution in this OPENING line — the section body resolves it (see SELF-CONTAINED PAYOFF below), and the chapter heading must not spoil it either. Lead with the shocking image or verb, not throat-clearing setup — "Most spiders never do this — this one builds a second body" beats "Spiders are fascinating animals that...".
 - SELF-CONTAINED PAYOFF (sections 3 and 5 — only their OPENING ~45 seconds / first ~120-140 words / first 4-6 spoken sentences ship as the standalone Short): sentence 1 teases, and the section MUST deliver and fully RESOLVE that specific question INSIDE that opening window — land a complete, satisfying answer a stranger grasps entirely on its own, BEFORE the ~45-second / ~6-sentence mark, because that is exactly where the Short is cut off. Do NOT park the answer in the back half of the section: that part airs ONLY in the long video, a cold Short viewer never hears it, and a Short that stops before its answer is the #1 cause of "what was the answer / clickbait" complaints and kills the replays a Short lives on. This does NOT shorten the section — keep its full mandated length for the long video; just FRONT-LOAD the complete tease→answer micro-arc into the opening sentences, then continue the section normally for the long-video viewer. Resolve only THIS section's own beat; do NOT give away the episode's single central reveal (that belongs to the template's reveal section) UNLESS this section IS that reveal section, in which case it pays the episode off in full. This requirement WINS over any per-section role above that says "end on a hook into the next": once the payoff has landed you may add at most ONE soft forward pull ("and that is not even the strangest part") — kept soft, never a bare cliffhanger.
+- MARK THE ARC END (sections 0, 3 and 5): set this section's "shortsArcSentences" to the 1-based sentence number where the tease→answer micro-arc FINISHES — the last sentence a cold Short viewer needs. It must be ≤6 and the narration through it ≤140 words (~45-50s), because the Short is cut at exactly that sentence; anything after it airs only in the long video. If the full answer cannot land by sentence ~6 / ~140 words, do NOT mark a later sentence — instead tighten the opening to a smaller, sharper question this section fully resolves inside that window, and mark where it lands.
 - SPOKEN-HOOK FORM (the opener is HEARD, not read — this is what stops a Short sounding like a recited article): write that first sentence the way a person actually SAYS a stunner out loud — name the concrete subject in the FIRST ~3 words, then short, mostly a single clause, present tense, direct. No stacked subordinate clauses, no wind-up before the main verb, about 14 words max. Use 2nd person ('you', 'your') WHERE IT IS HONEST — it pulls the viewer into the stakes ("A mosquito pierces your skin and you feel nothing"). A clause-heavy written sentence reads as flat "narration"; a tight spoken line reads as a hook. Good: "A cat's tongue never scoops water — it snaps a column straight up." Weak (reads like an essay): "What researchers studying the drinking behaviour of domestic cats eventually came to understand was that the tongue...".
 - LEAD WITH THE PHENOMENON, NOT THE MECHANISM (sections 3 and 5 — this is the single biggest reach lever): open on the astonishing thing a stranger can SEE and instantly picture — the visible behavior, the WHAT — or a sharp question about it. NEVER open on the internal anatomy, mechanism, or measurement that EXPLAINS it; that is the body's payoff, not the hook. Leading with the mechanism reads as a dry textbook line and gets scrolled past in the first second, even when it names the subject. A real example: the Short that opened "An owl can spin its head almost all the way around — how?" got ~5x the views of its same-episode sibling that opened "An owl's neck bones are full of holes far too wide for the arteries running through them." Good (phenomenon/question first): "An owl turns its head nearly all the way around without tearing an artery — how?". Weak (mechanism first): "An owl's neck bones have extra hollow space cushioning the arteries." The section body THEN explains the mechanism and fully resolves it — so phenomenon-first hook and SELF-CONTAINED PAYOFF reinforce each other: question up front, answer in the body, clean and complete.
 - Never open section 3 or 5 with a bare pronoun standing in for the subject, a callback phrase ("remember", "as we saw", "that same..."), or an unexplained term that was only introduced in an earlier section.
@@ -298,7 +302,23 @@ Pick ONE specific surprising topic within this sub-topic focus that fits a ${TAR
       const collision = findTitleCollision(normalized.title, avoidTitles);
       const wordCount = totalNarrationWords(normalized);
       const tooShort = wordCount < MIN_TOTAL_WORDS;
-      if ((collision || tooShort) && attempt < SCRIPT_GEN_ATTEMPTS) {
+      // Lever B — Shorts self-contained-arc verification. Deterministic
+      // (always on, no CLI): which Short sections (0/3/5) mark a tease→answer
+      // arc whose narration overflows the ~50s Short window and would be chopped.
+      const arcOverflow = shortsArcOverflowSections(normalized);
+      const hasArcOverflow = arcOverflow.length > 0;
+      // Gated LLM judge — only when the cheaper checks pass (so a doomed attempt
+      // never wastes a CLI call): it corrects each Short's shortsArcSentences
+      // marker and flags any section that never resolves its hook in the window.
+      let episode = normalized;
+      let judgeUnresolved: number[] = [];
+      if (!collision && !tooShort && !hasArcOverflow && ENABLE_SHORTS_ARC_QA) {
+        const refined = await refineShortsArcs(normalized, runClaudeCli);
+        episode = refined.episode;
+        judgeUnresolved = refined.unresolved;
+      }
+      const arcFail = hasArcOverflow || judgeUnresolved.length > 0;
+      if ((collision || tooShort || arcFail) && attempt < SCRIPT_GEN_ATTEMPTS) {
         if (collision) {
           log(
             `Topic collision: "${normalized.title}" overlaps already-published "${collision}". Regenerating (attempt ${attempt}/${SCRIPT_GEN_ATTEMPTS})...`,
@@ -307,6 +327,11 @@ Pick ONE specific surprising topic within this sub-topic focus that fits a ${TAR
         if (tooShort) {
           log(
             `Script only ${wordCount} words (floor ${MIN_TOTAL_WORDS} for ~${TARGET_WORDS}-word target). Regenerating (attempt ${attempt}/${SCRIPT_GEN_ATTEMPTS})...`,
+          );
+        }
+        if (arcFail) {
+          log(
+            `Shorts arc not self-contained (overflow [${arcOverflow.join(',')}], unresolved [${judgeUnresolved.join(',')}]). Regenerating (attempt ${attempt}/${SCRIPT_GEN_ATTEMPTS})...`,
           );
         }
         continue;
@@ -321,10 +346,15 @@ Pick ONE specific surprising topic within this sub-topic focus that fits a ${TAR
           `Script still only ${wordCount} words after ${attempt} attempts; accepting to avoid stalling the pipeline.`,
         );
       }
+      if (arcFail) {
+        log(
+          `Shorts arc still not fully self-contained after ${attempt} attempts (overflow [${arcOverflow.join(',')}], unresolved [${judgeUnresolved.join(',')}]); accepting to avoid stalling the pipeline.`,
+        );
+      }
       log(
-        `Script: "${normalized.title}" — ${normalized.sections.length} sections, ${wordCount} words, ${normalized.tags.length} tags, desc ${normalized.description.length} chars`,
+        `Script: "${episode.title}" — ${episode.sections.length} sections, ${wordCount} words, ${episode.tags.length} tags, desc ${episode.description.length} chars`,
       );
-      return { episode: normalized, hookPattern: hook.name };
+      return { episode, hookPattern: hook.name };
     } catch (err) {
       lastErr = err as Error;
       log(`Script generation attempt ${attempt}/${SCRIPT_GEN_ATTEMPTS} failed: ${lastErr.message}`);
@@ -418,6 +448,21 @@ function normalizeShortsHook(
     return undefined;
   }
   return trimmed;
+}
+
+// A sane positive sentence index for shortsArcSentences (Lever A). Non-numeric,
+// <1, or non-finite values drop to undefined so the Short falls back to the blind
+// time-based cut. A stray large value is clamped to a defensive ceiling; if it
+// still exceeds the section's real sentence count, trimToBoundary's
+// sentenceEndIndex returns -1 and the cut blind-falls-back anyway. The model is
+// required to emit ≤6, so the clamp only ever bounds an out-of-spec value.
+const ARC_SENTENCES_CAP = 12;
+function normalizeArcSentences(raw: unknown): number | undefined {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n)) return undefined;
+  const floored = Math.floor(n);
+  if (floored < 1) return undefined;
+  return Math.min(floored, ARC_SENTENCES_CAP);
 }
 
 export function sanitizeOverlay(raw: unknown, narration: string): SectionOverlay | null {
@@ -552,6 +597,10 @@ function normalizeEpisode(ep: Episode, series: Series, subTheme: string): Episod
       // trimmed string and drop it (back to the episode hook / chapter heading)
       // if it states an unspoken number — see normalizeShortsHook.
       shortsHook: normalizeShortsHook(sec.shortsHook, episodeNumbers, i),
+      // shortsArcSentences marks where this section's tease→answer arc completes
+      // so the Short is cut on the answer (Lever A). Coerce to a sane positive
+      // integer; a missing/garbage value drops to undefined → blind time-cut.
+      shortsArcSentences: normalizeArcSentences(sec.shortsArcSentences),
     };
     if (!OVERLAY_ALLOWED_SECTIONS.has(i)) {
       const { overlays: _unused, ...rest } = base;

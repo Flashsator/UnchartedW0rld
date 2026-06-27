@@ -9,6 +9,10 @@ import { PUBLISH_HOUR_UTC } from './config.js';
 import { log } from './utils.js';
 
 const MAX_SHORTS_SEC = 55;
+// A "complete story" Short shorter than this is implausible, so a tiny
+// shortsArcSentences marker (e.g. the model marking sentence 1) is treated as
+// noise and we fall back to the blind time-based cut instead of shipping a 6s clip.
+const MIN_ARC_SEC = 15;
 // No end-card padding: Shorts loop, and replay rate is a ranking signal the
 // algorithm weighs heavily. Ending the cut right where the narration ends (the
 // trim already lands on a sentence boundary) makes the loop seam tight, so the
@@ -67,10 +71,42 @@ export function publishAtFor(
   return d;
 }
 
-function trimToBoundary(
+// The index of the WordTiming that ends the nth (1-based) spoken sentence, or -1
+// if there are fewer than n sentences. Pure and exported for testing.
+export function sentenceEndIndex(words: WordTiming[], n: number): number {
+  if (n < 1) return -1;
+  const sentenceEnders = /[.!?]$/;
+  let count = 0;
+  for (let i = 0; i < words.length; i++) {
+    if (sentenceEnders.test(words[i]!.text)) {
+      count++;
+      if (count === n) return i;
+    }
+  }
+  return -1;
+}
+
+// When `arcSentences` (the section's shortsArcSentences marker — the sentence by
+// which the tease→answer arc COMPLETES) is set and the answer lands within
+// [MIN_ARC_SEC, MAX_SHORTS_SEC+0.5], cut exactly there so the Short ends ON the
+// answer instead of dragging into the next beat (Lever A). Otherwise fall back to
+// the blind "last sentence boundary under maxSec" cut. Exported for testing.
+export function trimToBoundary(
   words: WordTiming[],
   maxSec: number,
+  arcSentences?: number,
 ): { words: WordTiming[]; endSec: number } {
+  const hardCap = MAX_SHORTS_SEC + 0.5;
+  if (arcSentences && arcSentences >= 1) {
+    const idx = sentenceEndIndex(words, arcSentences);
+    if (idx >= 0) {
+      const end = words[idx]!.end;
+      if (end >= MIN_ARC_SEC && end <= hardCap) {
+        const slice = words.slice(0, idx + 1);
+        return { words: slice, endSec: Math.min(end + 0.3, hardCap) };
+      }
+    }
+  }
   const sentenceEnders = /[.!?]$/;
   let lastSentence = -1;
   for (let i = 0; i < words.length; i++) {
@@ -80,11 +116,11 @@ function trimToBoundary(
   if (lastSentence >= 0) {
     const slice = words.slice(0, lastSentence + 1);
     const endSec = slice[slice.length - 1]!.end + 0.3;
-    return { words: slice, endSec: Math.min(endSec, MAX_SHORTS_SEC + 0.5) };
+    return { words: slice, endSec: Math.min(endSec, hardCap) };
   }
   const slice = words.filter((w) => w.end <= maxSec);
   const endSec = slice.length > 0 ? slice[slice.length - 1]!.end + 0.3 : maxSec;
-  return { words: slice, endSec: Math.min(endSec, MAX_SHORTS_SEC + 0.5) };
+  return { words: slice, endSec: Math.min(endSec, hardCap) };
 }
 
 // Trim b-roll clips and their cut times together so they stay the same length.
@@ -191,9 +227,16 @@ export function buildShortsManifest(
     log(`Shorts: section ${entry.sectionIdx} not found, skipping.`);
     return null;
   }
+  const epSection = longEpisode.sections[entry.sectionIdx];
 
   const cap = Math.min(section.duration, MAX_SHORTS_SEC);
-  const { words: trimmedWords, endSec } = trimToBoundary(section.words, cap);
+  // Cut at the section's self-contained tease→answer arc end (Lever A) when the
+  // script marked it, so a resolved answer is never chopped; else blind cut.
+  const { words: trimmedWords, endSec } = trimToBoundary(
+    section.words,
+    cap,
+    epSection?.shortsArcSentences,
+  );
   const narrationSec = Math.max(8, Math.min(endSec, section.duration, MAX_SHORTS_SEC + 0.5));
   const duration = narrationSec + OUTRO_SEC;
   const { brollPaths: trimmedBroll, cutTimes: trimmedCuts } = trimClips(
@@ -208,7 +251,6 @@ export function buildShortsManifest(
   // (section 0) falls back to the episode cold-open hook; off-day sections fall
   // back to the section's first spoken narration sentence (subject-named, a real
   // claim), then to the episode anchor subject — see pickShortsHookText.
-  const epSection = longEpisode.sections[entry.sectionIdx];
   const hookText = pickShortsHookText({
     sectionIdx: entry.sectionIdx,
     shortsHook: epSection?.shortsHook,
