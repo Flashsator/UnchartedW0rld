@@ -382,15 +382,27 @@ silently resets every run.
   (then at most ONE soft forward pull, never a bare cliffhanger). Enforced in
   `scriptGen.ts` by the `SELF-CONTAINED PAYOFF` bullet + the Pacing-rule
   exception, which OVERRIDE the per-section role's generic "end on a hook into the
-  next" for sections 3/5. The section-0 same-day teaser keeps its mystery
+  next" for sections 3/5.
+  **TRUNCATION clarification (user follow-up 2026-06-27, commit a2f60b7):** a Short
+  is NOT the whole section — only the section's OPENING ~45 seconds (~120-140 words
+  / first 4-6 spoken sentences) ships as the Short; the audio is verbatim but
+  TRUNCATED (the runtime hard cut is `MAX_SHORTS_SEC = 55`s at the last sentence
+  boundary, so the ~45s prompt target leaves a ~10s buffer). So the tease→answer
+  micro-arc MUST land INSIDE that opening window, not in the section's back half —
+  the three prompt spots (Pacing-rule EXCEPTION line ~213, Shorts-cut opening-window
+  rule line ~221, `SELF-CONTAINED PAYOFF` line ~224) all say so. ALL Shorts come
+  from sections 0/3/5 ONLY (`planShortsForToday`), so this rule covers 100% of
+  Shorts — there is no other Short category to fix. It is a strong prompt STEER,
+  not a 100% hard guarantee (a true guarantee would need a verify→regenerate loop);
+  the user accepted the prompt-rewrite approach. The section-0 same-day teaser keeps its mystery
   cold-open line and sentence-2 promise tail unchanged (don't spoil the long
   video) but now ALSO lands one small self-contained fact before its forward hook,
   so the channel's highest-traffic Short stops cutting off cold. The episode's
   single central reveal is still withheld to the template's reveal section, so
   long-form retention is unaffected; invariant #1 holds because every resolved
   beat is the model's own true narration (no new claim is invented).
-- **Shorts cut faster than the long-form (by design):** `SHORTS_CLIP_SEC = 3.4`
-  in `src/config.ts` (the long-form `BROLL_CLIP_SEC` is 6) — a vertical,
+- **Shorts cut faster than the long-form (by design):** `SHORTS_CLIP_SEC = 4.0`
+  in `src/config.ts` (the long-form `BROLL_CLIP_SEC` is 7) — a vertical,
   muted, fast-scrolled feed rewards energy, so the same narration gets ~50% more
   cuts. It drives BOTH the portrait-clip fetch quota (`fetchShortsBroll`'s
   `needed` in `src/stock.ts`) and the Short's `clipQuota` in `pipeline.ts`. The
@@ -401,8 +413,9 @@ silently resets every run.
 - **Long-form rest beats + slower cadence (anti-fatigue):** the long-form picture
   used to move constantly (video + Ken Burns + grade + captions), which tires the
   eye. Two levers ease it, **long-form only** (Shorts keep their fast cadence):
-  (1) `BROLL_CLIP_SEC` was raised **5 → 6** in `src/config.ts` — shots-per-section
-  = `max(beats, ceil(duration / perShot))`, so a bigger baseline yields ~15% fewer
+  (1) `BROLL_CLIP_SEC` was raised **5 → 6 → 7** in `src/config.ts` (6/25 hero-reuse
+  pass took it to 7; `SHORTS_CLIP_SEC` 3.4 → 4.0 in the same pass) — shots-per-section
+  = `max(beats, ceil(duration / perShot))`, so a bigger baseline yields fewer
   cuts. Note `BROLL_CLIP_SEC` is ALSO read in `src/stock.ts` (the `orderPoolByPreference`
   weak-clip threshold and the `makeKenBurnsClip` frame count), so the change
   propagates there by design. (2) `REST_STILLS_PER_SECTION` (1) slots ONE shot per
@@ -419,6 +432,24 @@ silently resets every run.
   barely-there 1.0→1.03 push; captions/overlays/grade still layer on top),
   index-aligned through the new `shotStills?: (string|null)[]` manifest field.
   Render-side + one fetch step, no new state file.
+- **Shot assembly: up to N distinct clips per beat, then hero-segment reuse
+  (`assembleHeroReuseShots` in `src/stock.ts`).** A narration beat can own more shot
+  slots than it has fetched clips. Each beat downloads
+  `min(MAX_DISTINCT_CLIPS_PER_BEAT, slots)` distinct clips for its query and fills
+  the rest of its slots with ffmpeg time-window cuts of the FIRST (hero) clip
+  (`segmentWindow`/`cutClipSegment`, camera varied per `kenBurnsFor`) — so a
+  multi-slot beat shows real variety up front and never flashes a wall of different
+  individuals. `MAX_DISTINCT_CLIPS_PER_BEAT` was **1 → 2** (user directive
+  2026-06-27, commit d2d2a45) for a little more honest variety; the pure mapper is
+  `shotSource(reuseOrdinal, distinctCount)` (`reuseOrdinal < distinctCount` →
+  distinct clip, else a hero segment whose ordinal restarts at 1 so the first reused
+  segment still starts at `ss = perShot`, matching the old single-clip behavior;
+  unit-tested in `test/stock.test.ts`). `clipsForBeat` borrows the nearest non-empty
+  NEIGHBOR list when a beat itself found nothing. **Invariant #3 holds:** all distinct
+  clips of a beat come from the SAME on-subject beat query and pass the same
+  relevance/vision/portrait-floor filters; a failed segment cut DROPS that slot
+  rather than repeating a hero frame-0. Shorts inherit the same path (up to 2
+  distinct portrait clips per beat).
 - **Schedule:** `PUBLISH_WEEKDAYS_UTC = [1,3,5]`; `WEEKDAY_SERIES_MAP` = Mon→animals,
   Wed→insects, Fri→plants. The run is *triggered* at 13:00 UTC but each long video
   is *scheduled public* at `PUBLISH_HOUR_UTC` = **19:00 UTC** (the US-afternoon
@@ -429,7 +460,8 @@ silently resets every run.
   just-dropped long video) **plus** later-section shorts dripped onto the
   off-days, so every weekday gets one and no two reuse a section: Mon/Wed → 2
   shorts (same-day + next-day), Fri → 3 (same-day + Sat + Sun). Because sections
-  3/5 ship verbatim as those off-day Shorts, the script prompt requires their
+  3/5 ship verbatim (but truncated to the opening ~45s — see the TRUNCATION
+  clarification above) as those off-day Shorts, the script prompt requires their
   FIRST sentence to stand alone for a cold viewer (name the subject, zero-context
   claim) and adds a per-section `shortsHook` field (8-14 word standalone hook)
   that `buildShortsManifest` prefers over the chapter-label heading for the
