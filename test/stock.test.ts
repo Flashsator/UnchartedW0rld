@@ -16,6 +16,7 @@ import {
   parseCommonsResults,
   relaxedQueryVariants,
   segmentWindow,
+  shotSource,
   stripHtml,
 } from '../src/stock.js';
 import type { BrollClip } from '../src/types.js';
@@ -156,6 +157,26 @@ test('segmentWindow rejects non-finite or non-positive inputs', () => {
   assert.equal(segmentWindow(1, 7, 0), null);
   assert.equal(segmentWindow(1, NaN, 20), null);
   assert.equal(segmentWindow(1, 7, Infinity), null);
+});
+
+// --- shotSource --------------------------------------------------------------
+
+test('shotSource maps the first ordinals to distinct downloaded clips', () => {
+  assert.deepEqual(shotSource(0, 2), { kind: 'clip', index: 0 });
+  assert.deepEqual(shotSource(1, 2), { kind: 'clip', index: 1 });
+});
+
+test('shotSource falls back to a hero segment once the distinct clips run out', () => {
+  // Beyond distinctCount, segment ordinals restart at 1 so the first reused
+  // segment starts at ss = perShot (segmentWindow ordinal 1).
+  assert.deepEqual(shotSource(2, 2), { kind: 'segment', ordinal: 1 });
+  assert.deepEqual(shotSource(3, 2), { kind: 'segment', ordinal: 2 });
+});
+
+test('shotSource with a single distinct clip matches the old one-hero behavior', () => {
+  assert.deepEqual(shotSource(0, 1), { kind: 'clip', index: 0 });
+  assert.deepEqual(shotSource(1, 1), { kind: 'segment', ordinal: 1 });
+  assert.deepEqual(shotSource(2, 1), { kind: 'segment', ordinal: 2 });
 });
 
 test('preferredMoods picks the dominant mood from music tags', () => {

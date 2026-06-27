@@ -948,14 +948,17 @@ export async function fetchBroll(
 }
 
 // --- Hero-reuse shot assembly ------------------------------------------------
-// One beat = one INDIVIDUAL. A beat used to be filled with up to N *different*
-// downloaded clips, so a single narration moment could flash a dozen different
-// individuals of the subject (the "red spider suddenly becomes a green spider"
-// glitch). Instead each beat now locks exactly ONE "hero" clip and its extra
-// shot slots are cut from DIFFERENT time windows of that same hero — the
-// renderer's per-slot kenBurnsFor(clipIdx) varies the camera, so reused
-// segments read as "another shot of the same individual" rather than a new one.
-const MAX_DISTINCT_CLIPS_PER_BEAT = 1;
+// One beat = one narration moment. A beat used to be filled with up to N *random*
+// downloaded clips, so a single moment could flash a dozen different individuals
+// of the subject (the "red spider suddenly becomes a green spider" glitch).
+// Instead a beat now downloads AT MOST MAX_DISTINCT_CLIPS_PER_BEAT distinct clips
+// and fills any remaining slots with DIFFERENT time windows of the beat's first
+// ("hero") clip — the renderer's per-slot kenBurnsFor(clipIdx) varies the camera,
+// so a reused segment reads as "another shot of the same individual". Allowing a
+// couple of distinct clips per beat (not exactly one) gives the eye a little
+// honest variety while still capping how many different individuals one moment
+// can show.
+const MAX_DISTINCT_CLIPS_PER_BEAT = 2;
 
 // Expands a per-beat slot count into an ordered list of shots. Shot 0 of a beat
 // is the hero itself; reuseOrdinal ≥1 marks a reused segment of that hero.
@@ -985,6 +988,20 @@ export function segmentWindow(ordinal: number, perShotSec: number, clipDurationS
   const ss = Math.min(ordinal * perShotSec, maxStart);
   const t = clipDurationSec - ss;                     // extend to clip end; t ≥ perShot, never freezes
   return { ss, t };
+}
+
+// Decides what a beat's `reuseOrdinal`-th shot is, given how many DISTINCT clips
+// were actually downloaded for that beat. The first `distinctCount` ordinals map
+// straight to those distinct clips; any ordinal beyond them is a time-window
+// segment of the beat's first ("hero") clip, with the segment ordinal restarted
+// at 1 — so the first reused segment starts at ss = perShot exactly as it did
+// when only one clip was downloaded. Pure and exported for testing.
+export function shotSource(
+  reuseOrdinal: number,
+  distinctCount: number,
+): { kind: 'clip'; index: number } | { kind: 'segment'; ordinal: number } {
+  if (reuseOrdinal < distinctCount) return { kind: 'clip', index: reuseOrdinal };
+  return { kind: 'segment', ordinal: reuseOrdinal - distinctCount + 1 };
 }
 
 // Cuts the [ss, ss+t] window of a hero clip into a new file. The segment is the
@@ -1032,24 +1049,25 @@ async function cutClipSegment(
   }
 }
 
-// The hero clip for beat `i`: its own hero if found, else the nearest neighbor's
-// hero (searched outward) so a beat whose query came up empty still reuses an
-// on-section individual instead of dropping the slot. Null only when no beat in
-// the section found anything.
-function heroForBeat(heroes: (BrollClip | null)[], i: number): BrollClip | null {
-  if (heroes[i]) return heroes[i]!;
-  for (let d = 1; d < heroes.length; d++) {
-    if (heroes[i - d]) return heroes[i - d]!;
-    if (heroes[i + d]) return heroes[i + d]!;
+// The clips for beat `i`: its own downloaded list if non-empty, else the nearest
+// neighbor's list (searched outward) so a beat whose query came up empty still
+// reuses an on-section individual instead of dropping the slot. Empty only when
+// no beat in the section found anything.
+function clipsForBeat(clipLists: readonly BrollClip[][], i: number): BrollClip[] {
+  if (clipLists[i]?.length) return clipLists[i]!;
+  for (let d = 1; d < clipLists.length; d++) {
+    if (clipLists[i - d]?.length) return clipLists[i - d]!;
+    if (clipLists[i + d]?.length) return clipLists[i + d]!;
   }
-  return null;
+  return [];
 }
 
-// Builds `needed` shots across the ordered `queries`, locking ONE hero per beat
-// and filling the rest of each beat's slots with distinct segments of that hero
-// (see the hero-reuse note above). Downloads at most one clip per beat (only for
-// beats that own a slot), so a section shows one individual per beat. perShot is
-// the section's seconds-per-shot, used to size each reused segment window.
+// Builds `needed` shots across the ordered `queries`. Each beat downloads at most
+// MAX_DISTINCT_CLIPS_PER_BEAT distinct clips (capped at its own slot count) and
+// fills any remaining slots with distinct segments of its first ("hero") clip
+// (see the hero-reuse note above), so a section shows at most a couple of
+// individuals per beat instead of a dozen. perShot is the section's
+// seconds-per-shot, used to size each reused segment window.
 async function assembleHeroReuseShots(
   queries: string[],
   needed: number,
@@ -1062,42 +1080,47 @@ async function assembleHeroReuseShots(
 ): Promise<BrollClip[]> {
   const allocation = allocateClipsAcrossBeats(needed, queries.length);
 
-  // One hero download per beat that owns ≥1 slot. heroes[i] is null when beat i
-  // got no slot or its query found nothing.
-  const heroes: (BrollClip | null)[] = [];
+  // Up to MAX_DISTINCT_CLIPS_PER_BEAT distinct downloads per beat that owns ≥1
+  // slot (never more than the beat's slot count). clipLists[i] is empty when beat
+  // i got no slot or its query found nothing.
+  const clipLists: BrollClip[][] = [];
   for (let i = 0; i < queries.length; i++) {
-    if (allocation[i]! <= 0) {
-      heroes.push(null);
+    const slots = allocation[i]!;
+    if (slots <= 0) {
+      clipLists.push([]);
       continue;
     }
     const got = await fetchClipsForQuery(
       queries[i]!,
-      MAX_DISTINCT_CLIPS_PER_BEAT,
+      Math.min(MAX_DISTINCT_CLIPS_PER_BEAT, slots),
       cacheDir,
       usedUrls,
       sourcesUsed,
       commonsCredits,
       opts,
     );
-    heroes.push(got[0] ?? null);
+    clipLists.push(got);
   }
 
-  // Realize each planned shot: ordinal 0 is the hero, ordinal ≥1 is a distinct
-  // time-window cut of the SAME hero.
+  // Realize each planned shot: the first few ordinals map to the beat's distinct
+  // downloaded clips, anything beyond them is a distinct time-window cut of the
+  // beat's first ("hero") clip (see shotSource).
   const shots: BrollClip[] = [];
   for (const { beatIndex, reuseOrdinal } of planSectionShots(allocation)) {
-    const hero = heroForBeat(heroes, beatIndex);
-    if (!hero) continue;
-    if (reuseOrdinal === 0) {
-      shots.push(hero);
+    const clips = clipsForBeat(clipLists, beatIndex);
+    if (clips.length === 0) continue;
+    const src = shotSource(reuseOrdinal, clips.length);
+    if (src.kind === 'clip') {
+      shots.push(clips[src.index]!);
       continue;
     }
-    const win = segmentWindow(reuseOrdinal, perShot, hero.duration);
+    const hero = clips[0]!;
+    const win = segmentWindow(src.ordinal, perShot, hero.duration);
     const seg = win ? await cutClipSegment(hero, win.ss, win.t, cacheDir) : null;
     // No distinct segment could be cut (hero too short to subdivide, or the cut
     // failed) — DROP this extra slot rather than push the hero's frame-0 footage
     // a second time, which would show two identical opening shots back to back.
-    // The hero (ordinal 0) is always kept, and computeCutTimes re-spreads the
+    // The distinct clips are always kept, and computeCutTimes re-spreads the
     // section over the returned clip count, so a shorter list stays consistent.
     if (!seg) continue;
     shots.push(seg);
@@ -1109,10 +1132,10 @@ async function assembleHeroReuseShots(
 // list of stock queries (one per narration moment). The total clip count is
 // still sized to the section duration so the cut rhythm matches a single-query
 // section, and it is distributed across the beats IN ORDER — so each shot
-// depicts what is being said at that point in the narration. Each beat locks ONE
-// hero clip and reuses distinct segments of it for its extra slots
-// (assembleHeroReuseShots), so a section never flashes a dozen different
-// individuals of the subject.
+// depicts what is being said at that point in the narration. Each beat downloads
+// at most MAX_DISTINCT_CLIPS_PER_BEAT distinct clips and fills any remaining
+// slots with distinct segments of its first clip (assembleHeroReuseShots), so a
+// section never flashes a dozen different individuals of the subject.
 export async function fetchBrollForBeats(
   beats: string[],
   sectionDuration: number,
@@ -1162,7 +1185,7 @@ export async function fetchBrollForBeats(
 
 // Last-resort cross-section backfill (pure). A section reaches here only when
 // EVERY one of its beats came up empty across providers → Commons → Unsplash AND
-// no sibling beat in the section had footage to borrow (heroForBeat), i.e. a
+// no sibling beat in the section had footage to borrow (clipsForBeat), i.e. a
 // genuinely unfilmable subject — the invariant #3 smell the topic-demand gate
 // now blocks upstream. The episode subject is constant, so footage already
 // fetched for OTHER sections is still on-subject: reuse it here rather than
@@ -1182,10 +1205,10 @@ export function backfillSectionClips(pool: readonly BrollClip[], needed: number)
 // Short already has the long section's landscape clips (center-cropped by the
 // renderer) as a working fallback, so this returns whatever portrait footage
 // it found — possibly [] — instead of throwing. Beats are queried in narration
-// order; like the long-form path, each beat locks ONE hero clip and reuses
-// distinct segments of it for its extra slots (assembleHeroReuseShots), so a
-// Short never flashes a different individual every cut. Cuts faster than the
-// long-form via the tighter SHORTS_CLIP_SEC quota.
+// order; like the long-form path, each beat uses at most a couple of distinct
+// clips and reuses distinct segments of its first clip for the rest
+// (assembleHeroReuseShots), so a Short never flashes a different individual every
+// cut. Cuts faster than the long-form via the tighter SHORTS_CLIP_SEC quota.
 export async function fetchShortsBroll(
   beats: string[],
   narrationSec: number,
