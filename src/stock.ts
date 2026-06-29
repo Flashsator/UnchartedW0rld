@@ -255,52 +255,113 @@ function relevanceTokens(text: string): string[] {
     .map((t) => (t.length > 3 && t.endsWith('s') ? t.slice(0, -1) : t));
 }
 
+// CLOSED (single-token) compounds whose stock footage is reliably slugged by the
+// bare head noun (and vice-versa), mapped to that head. Lets a "honeybee" subject
+// match a clip slugged "bee" — and a "bee" subject match a "honeybee" clip —
+// WITHOUT a generic suffix test. An earlier endsWith fold did exactly that and
+// re-admitted the off-subject footage invariant #3 forbids: "landscape"⊃"ape",
+// "plant"/"elephant"⊃"ant", "fowl"⊃"owl", "spray"⊃"ray" all end in a short
+// subject token yet show the wrong thing. A compound we don't list simply falls
+// back to exact-token matching (stricter, never wrong), so this stays safe by
+// construction. Keep entries to common, widely-filmed creatures (invariant #3
+// pins subjects to those). Keys are singular/lowercase to match relevanceTokens'
+// plural fold. Pure data.
+const COMPOUND_HEAD: Record<string, string> = {
+  honeybee: 'bee', bumblebee: 'bee',
+  dragonfly: 'fly', damselfly: 'fly', butterfly: 'fly', mayfly: 'fly', firefly: 'fly', horsefly: 'fly', housefly: 'fly',
+  jellyfish: 'fish', catfish: 'fish', swordfish: 'fish', starfish: 'fish', lionfish: 'fish', anglerfish: 'fish', cuttlefish: 'fish', sailfish: 'fish', pufferfish: 'fish', stonefish: 'fish',
+  seahorse: 'horse',
+  stingray: 'ray',
+  hummingbird: 'bird', mockingbird: 'bird', songbird: 'bird', seabird: 'bird', blackbird: 'bird', ladybird: 'bird',
+  ladybug: 'bug',
+  earthworm: 'worm', silkworm: 'worm', tapeworm: 'worm', flatworm: 'worm',
+  rattlesnake: 'snake', seasnake: 'snake',
+};
+
+// Whether a clip's metadata tokens name the subject's HEAD noun, tolerant of the
+// known closed compounds above in BOTH directions: exact-token first; then "head
+// is a compound, clip uses its bare head" (honeybee→bee); then "clip is a
+// compound of the head" (bee←honeybee). No substring/suffix logic, so a word that
+// merely ENDS in the head ("fowl"/"spray"/"plant"/"landscape") never matches.
+// Shared by the relevance filter and the on-subject verdict so the two agree.
+// Pure.
+function metaNamesSubject(metaTokens: Set<string>, head: string): boolean {
+  if (metaTokens.has(head)) return true;
+  const folded = COMPOUND_HEAD[head];
+  if (folded && metaTokens.has(folded)) return true;
+  for (const m of metaTokens) {
+    if (COMPOUND_HEAD[m] === head) return true;
+  }
+  return false;
+}
+
+// The subject's matchable head noun: the LAST usable token of the subject phrase
+// ("bee" of "honey bee", "otter" of "sea otter", "octopus" of "giant pacific
+// octopus"), mirroring anchorVisual's head-noun anchor — the creature itself, not
+// a leading modifier like "sea"/"giant" that a generic clip could share. Returns
+// undefined when the subject yields no usable token. Pure.
+function subjectHead(subject: string | undefined): string | undefined {
+  if (!subject) return undefined;
+  const toks = relevanceTokens(subject);
+  return toks.length ? toks[toks.length - 1] : undefined;
+}
+
 // Whether a downloaded clip can be PROVEN on- or off-subject from its provider
-// metadata. Returns `true` when a subject token appears in the clip's metadata,
-// `false` when the metadata exists but names none of the subject tokens (proven
+// metadata. Returns `true` when the clip's metadata names the subject's head noun
+// (compound-tolerant), `false` when the metadata exists but does NOT (proven
 // off-subject), and `undefined` when there's nothing to judge on (no metadata or
 // no subject) — absence of evidence, left alone by the card decider. Reuses the
-// same tokenizer as the relevance filter so the two paths agree. Pure and
-// exported for testing.
+// same tokenizer/head logic as the relevance filter so the two paths agree. Pure
+// and exported for testing.
 export function isClipOnSubject(
   meta: string | undefined,
   subject: string | undefined,
 ): boolean | undefined {
   if (!meta || !subject) return undefined;
-  const subjectTokens = relevanceTokens(subject);
-  if (subjectTokens.length === 0) return undefined;
+  const head = subjectHead(subject);
+  if (!head) return undefined;
   const metaTokens = new Set(relevanceTokens(meta));
-  return subjectTokens.some((t) => metaTokens.has(t));
+  return metaNamesSubject(metaTokens, head);
 }
 
-// Drops candidates whose own metadata provably mismatches the query, and floats
-// subject matches to the front. Providers fuzzy-match a thin query into
-// whatever they have (the narration/visual drift viewers notice), and per-clip
-// metadata is the only signal that exposes it: a candidate WITH metadata
-// sharing zero tokens with the query is dropped; candidates without metadata
-// are kept — absence of evidence isn't a mismatch. Candidates whose metadata
-// names the query's LEADING token (the subject noun, per anchorVisual) move
-// ahead of the rest; original order is otherwise preserved. Pure and exported
-// for testing.
+// Keeps only candidates that NAME the subject (plus those with no metadata to
+// judge on), and ranks the most query-specific first. Providers fuzzy-match a
+// thin query into whatever they have (the narration/visual drift viewers
+// notice), and per-clip metadata is the only signal that exposes it. A candidate
+// WITH metadata that does NOT name the subject's HEAD noun is PROVEN off-subject
+// and DROPPED, even if it shares an incidental scene word like "flower"/"water"
+// with the query. (Demoting-but-keeping it, the old behavior, still let a seagull
+// whose slug says "flower" become a beat's SECOND distinct shot, or fill a Short
+// — the off-topic footage viewers actually see — because the secondary-clip and
+// Shorts paths have no vision-QA gate.) The head noun comes from the real episode
+// `subject` (its last token, the creature) when supplied, else the query's
+// leading anchor token; matching folds known closed compounds (honeybee↔bee) via
+// metaNamesSubject. Candidates WITHOUT metadata are kept — absence of evidence
+// isn't a mismatch. Among the kept-with-metadata, higher full-query token overlap
+// leads; ties keep provider order (stable sort), and no-metadata clips trail
+// behind any proven subject match. Pure and exported for testing.
 export function filterAndRankByRelevance(
   candidates: StockCandidate[],
   query: string,
+  subject?: string,
 ): StockCandidate[] {
   const queryTokens = relevanceTokens(query);
   if (queryTokens.length === 0) return candidates;
-  const subject = queryTokens[0]!;
-  const kept = candidates
-    .map((c) => {
-      if (!c.meta) return { c, overlap: -1, hasSubject: false };
-      const metaTokens = new Set(relevanceTokens(c.meta));
-      const overlap = queryTokens.reduce((a, t) => a + (metaTokens.has(t) ? 1 : 0), 0);
-      return { c, overlap, hasSubject: metaTokens.has(subject) };
-    })
-    .filter((s) => s.overlap !== 0);
-  return [
-    ...kept.filter((s) => s.hasSubject).map((s) => s.c),
-    ...kept.filter((s) => !s.hasSubject).map((s) => s.c),
-  ];
+  const head = subjectHead(subject) ?? queryTokens[0]!;
+  const withMeta: Array<{ c: StockCandidate; overlap: number }> = [];
+  const noMeta: StockCandidate[] = [];
+  for (const c of candidates) {
+    if (!c.meta) {
+      noMeta.push(c);
+      continue;
+    }
+    const metaTokens = new Set(relevanceTokens(c.meta));
+    if (!metaNamesSubject(metaTokens, head)) continue; // proven off-subject → drop
+    const overlap = queryTokens.reduce((a, t) => a + (metaTokens.has(t) ? 1 : 0), 0);
+    withMeta.push({ c, overlap });
+  }
+  withMeta.sort((a, b) => b.overlap - a.overlap); // stable in V8 → equal overlap keeps provider order
+  return [...withMeta.map((x) => x.c), ...noMeta];
 }
 
 // Round-robin merge that preserves each provider's own result order — their
@@ -765,7 +826,7 @@ async function downloadVideoClips(
   // Candidates the provider reports as shorter than one cut slot go to the
   // back of the line — usable, but only after every full-length option.
   const groups = shuffle(
-    [pexels, pixabay, coverr].map((g) => filterAndRankByRelevance(g, query)),
+    [pexels, pixabay, coverr].map((g) => filterAndRankByRelevance(g, query, opts.subject)),
   );
   const merged = interleaveRoundRobin(groups).filter((c) => !usedUrls.has(c.url));
   const pool = orderPoolByPreference(merged);
@@ -975,17 +1036,24 @@ export function planSectionShots(slotsPerBeat: number[]): Array<{ beatIndex: num
 }
 
 // The ffmpeg [ss, ss+t] window for the `ordinal`-th reused segment of a hero
-// clip. Returns null when there is nothing to cut (ordinal 0, or the hero is no
-// longer than one shot — reuse the whole hero in that case). The window always
-// extends to the clip's end, so t ≥ perShotSec and the renderer never freezes on
-// a too-short segment. Pure and exported for testing.
+// clip. Returns null when there is nothing to cut: ordinal 0, a hero no longer
+// than one shot (reuse the whole hero then), OR the requested window would run
+// past the clip end — the caller DROPS that slot rather than repeat footage.
+// Each ordinal starts a full shot-length later than the previous (ss =
+// ordinal*perShot), so the visible windows never overlap and no two reused shots
+// show the same footage. (The old min()-clamp collapsed several ordinals onto
+// the same start, which is exactly what made a beat replay an identical segment.)
+// The window still extends to the clip's end, so t ≥ perShotSec — guaranteed
+// because ss ≤ maxStart here — and the renderer never freezes on a too-short
+// segment. Pure and exported for testing.
 export function segmentWindow(ordinal: number, perShotSec: number, clipDurationSec: number): { ss: number; t: number } | null {
   if (ordinal <= 0) return null;
   if (!Number.isFinite(perShotSec) || !Number.isFinite(clipDurationSec)) return null;
   if (perShotSec <= 0 || clipDurationSec <= 0) return null;
   if (clipDurationSec <= perShotSec) return null;     // too short → reuse whole hero
   const maxStart = clipDurationSec - perShotSec;
-  const ss = Math.min(ordinal * perShotSec, maxStart);
+  const ss = ordinal * perShotSec;                    // distinct, non-overlapping start
+  if (ss > maxStart) return null;                     // no further distinct window → caller drops the slot
   const t = clipDurationSec - ss;                     // extend to clip end; t ≥ perShot, never freezes
   return { ss, t };
 }
@@ -1215,11 +1283,19 @@ export async function fetchShortsBroll(
   workDir: string,
   usedUrls: Set<string>,
   pixabayCategory?: string,
+  subject?: string,
 ): Promise<BrollClip[]> {
   const cacheDir = ensureDir(path.join(workDir, 'broll'));
   const queries = beats.map((b) => b.trim()).filter(Boolean);
   if (queries.length === 0) return [];
-  const opts: BrollFetchOpts = { orientation: 'portrait', pixabayCategory };
+  // Thread the episode subject through so filterAndRankByRelevance keys on the
+  // subject HEAD noun, not the anchored query's leading token. For a multi-word
+  // subject ("honey bee", "sea otter") that leading token is the MODIFIER
+  // ("honey"/"sea"), so without this a portrait clip slugged by the creature
+  // ("bee"/"otter") would be wrongly dropped as off-subject — defeating the
+  // portrait-native upgrade on the reach-critical Shorts path. Mirrors the
+  // long-form fetch (see pipeline.ts), so both surfaces judge relevance the same.
+  const opts: BrollFetchOpts = { orientation: 'portrait', pixabayCategory, subject };
   const needed = Math.max(1, Math.ceil(narrationSec / SHORTS_CLIP_SEC));
   return assembleHeroReuseShots(
     queries,

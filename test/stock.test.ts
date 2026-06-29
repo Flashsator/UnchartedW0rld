@@ -5,6 +5,7 @@ import {
   backfillSectionClips,
   filterAndRankByRelevance,
   interleaveRoundRobin,
+  isClipOnSubject,
   isPermissiveLicense,
   orderPoolByPreference,
   pexelsSlugText,
@@ -137,10 +138,29 @@ test('segmentWindow cuts a distinct later window that extends to the clip end', 
   assert.deepEqual(win, { ss: 7, t: 13 });
 });
 
-test('segmentWindow clamps the start so the window never runs past the clip end', () => {
-  // ordinal 3 * 7 = 21 > maxStart (20 - 7 = 13) → clamp to 13.
-  const win = segmentWindow(3, 7, 20);
-  assert.deepEqual(win, { ss: 13, t: 7 });
+test('segmentWindow returns distinct, non-overlapping starts and null past the clip end', () => {
+  // 30s hero / 7s shots: maxStart = 30 - 7 = 23. Ordinals start a full shot
+  // apart (7/14/21), each extending to the clip end; ordinal 4 (4*7=28 > 23)
+  // has no further distinct window → null (caller drops the slot, never replays).
+  assert.deepEqual(segmentWindow(1, 7, 30), { ss: 7, t: 23 });
+  assert.deepEqual(segmentWindow(2, 7, 30), { ss: 14, t: 16 });
+  assert.deepEqual(segmentWindow(3, 7, 30), { ss: 21, t: 9 });
+  assert.equal(segmentWindow(4, 7, 30), null);
+});
+
+test('segmentWindow never overlaps and never repeats a start within a hero', () => {
+  const dur = 30;
+  const perShot = 7;
+  const starts = new Set<number>();
+  for (let ordinal = 1; ordinal <= 10; ordinal++) {
+    const win = segmentWindow(ordinal, perShot, dur);
+    if (!win) continue;
+    assert.ok(!starts.has(win.ss), `repeated start ${win.ss} at ordinal ${ordinal}`);
+    starts.add(win.ss);
+    assert.ok(win.t >= perShot, `t<perShot at ordinal ${ordinal}`); // ss ≤ maxStart guarantees this
+  }
+  // ordinal 4 (28) > maxStart (23) → null, so only 1..3 survive — all distinct.
+  assert.deepEqual([...starts].sort((a, b) => a - b), [7, 14, 21]);
 });
 
 test('segmentWindow guarantees t >= perShot so a segment never freezes', () => {
@@ -487,7 +507,11 @@ test('filterAndRankByRelevance keeps candidates without metadata (no evidence ei
   assert.deepEqual(out.map((c) => c.url), ['unknown']);
 });
 
-test('filterAndRankByRelevance floats subject (leading token) matches to the front', () => {
+test('filterAndRankByRelevance drops metadata clips that do NOT name the subject, even on a shared scene word', () => {
+  // 'water-only' shares the incidental scene word "water" with the query but
+  // never names the subject "cat" → proven off-subject → dropped (the old
+  // behavior demoted-but-kept it, letting it become a beat's 2nd distinct shot).
+  // 'no-meta' has nothing to judge on → kept, behind any proven subject match.
   const out = filterAndRankByRelevance(
     [
       cand('water-only', 'water droplets macro'),
@@ -496,9 +520,39 @@ test('filterAndRankByRelevance floats subject (leading token) matches to the fro
     ],
     'cat lapping water',
   );
-  assert.equal(out[0]!.url, 'subject');
-  // Non-subject keepers retain their original relative order behind it.
-  assert.deepEqual(out.map((c) => c.url), ['subject', 'water-only', 'no-meta']);
+  assert.deepEqual(out.map((c) => c.url), ['subject', 'no-meta']);
+});
+
+test('filterAndRankByRelevance drops an off-subject clip sharing only a scene word with a bee query', () => {
+  // The exact field defect: a bee episode where a "seagull ... flower field"
+  // clip survived on the shared word "flower". It must now be dropped.
+  const out = filterAndRankByRelevance(
+    [
+      cand('seagull', 'seagull flying over a flower field'),
+      cand('bee', 'honeybee on a flower'),
+    ],
+    'honeybee gathering nectar on a flower',
+  );
+  assert.deepEqual(out.map((c) => c.url), ['bee']);
+});
+
+test('filterAndRankByRelevance keeps a closed-compound subject match (bee ⊂ honeybee)', () => {
+  const out = filterAndRankByRelevance(
+    [cand('comb', 'bee on honeycomb')],
+    'honeybee worker on the comb',
+  );
+  assert.deepEqual(out.map((c) => c.url), ['comb']);
+});
+
+test('filterAndRankByRelevance ranks higher full-query overlap first among subject matches', () => {
+  const out = filterAndRankByRelevance(
+    [
+      cand('low', 'honeybee'),
+      cand('high', 'honeybee gathering nectar flower'),
+    ],
+    'honeybee gathering nectar on a flower',
+  );
+  assert.deepEqual(out.map((c) => c.url), ['high', 'low']);
 });
 
 test('filterAndRankByRelevance folds simple plurals so "cats" matches "cat"', () => {
@@ -509,6 +563,89 @@ test('filterAndRankByRelevance folds simple plurals so "cats" matches "cat"', ()
 test('filterAndRankByRelevance passes everything through when the query has no usable tokens', () => {
   const all = [cand('a', 'zebra'), cand('b')];
   assert.deepEqual(filterAndRankByRelevance(all, 'of in'), all);
+});
+
+test('filterAndRankByRelevance matches the subject HEAD noun, not a leading modifier', () => {
+  // subject "sea otter": a generic "sea waves" clip shares the modifier "sea"
+  // but never names the creature "otter" → dropped. (Keying off queryTokens[0]
+  // would have kept it on "sea".)
+  const out = filterAndRankByRelevance(
+    [
+      cand('waves', 'ocean sea waves crashing'),
+      cand('otter', 'sea otter floating on its back'),
+    ],
+    'sea otter swimming in kelp',
+    'sea otter',
+  );
+  assert.deepEqual(out.map((c) => c.url), ['otter']);
+});
+
+test('filterAndRankByRelevance Shorts path: subject is load-bearing for a multi-word subject', () => {
+  // The honey-bee episode class that motivated the fix. anchorVisual prepends the
+  // FULL subject "honey bee" when the model's visual omits the head, so the
+  // anchored beat query leads with the MODIFIER "honey", not "bee". A portrait
+  // clip slugged by the creature ("bee gathering pollen") must survive.
+  const candidates = [
+    cand('gull', 'seagull soaring over the shore'),
+    cand('bee', 'bee gathering pollen on a flower'),
+  ];
+  const query = 'honey bee landing on a flower';
+  // WITHOUT subject (the fetchShortsBroll bug): head falls back to "honey", so the
+  // real bee clip is wrongly dropped as off-subject.
+  assert.deepEqual(
+    filterAndRankByRelevance(candidates, query).map((c) => c.url),
+    [],
+  );
+  // WITH subject threaded (fetchShortsBroll now passes episode.subject): head is
+  // "bee", the creature clip is kept and the seagull still dropped.
+  assert.deepEqual(
+    filterAndRankByRelevance(candidates, query, 'honey bee').map((c) => c.url),
+    ['bee'],
+  );
+});
+
+test('filterAndRankByRelevance drops words that merely END in a short subject token', () => {
+  // "plant"/"elephant" must NOT pass as "ant" — the field-failure class the crude
+  // endsWith fold re-admitted. Only the real "ant" clip survives.
+  const out = filterAndRankByRelevance(
+    [
+      cand('plant', 'green plant leaves macro'),
+      cand('eleph', 'elephant walking in savanna'),
+      cand('ant', 'ant carrying a leaf'),
+    ],
+    'ant colony foraging trail',
+  );
+  assert.deepEqual(out.map((c) => c.url), ['ant']);
+});
+
+// --- isClipOnSubject ------------------------------------------------------------
+
+test('isClipOnSubject matches known closed compounds in both directions', () => {
+  assert.equal(isClipOnSubject('bee on comb', 'honeybee'), true); // head honeybee → bee
+  assert.equal(isClipOnSubject('honeybee macro', 'bee'), true); // clip honeybee → head bee
+  assert.equal(isClipOnSubject('a fly on a leaf', 'dragonfly'), true);
+  assert.equal(isClipOnSubject('jellyfish drifting', 'fish'), true);
+});
+
+test('isClipOnSubject is false when metadata names none of the subject tokens', () => {
+  assert.equal(isClipOnSubject('seagull flying', 'honeybee'), false);
+});
+
+test('isClipOnSubject rejects unrelated words that merely END in a short subject token', () => {
+  // The crude endsWith fold admitted all of these (overlap 0, wrong footage).
+  // A closed compound must be in COMPOUND_HEAD, not any word sharing a suffix.
+  assert.equal(isClipOnSubject('scenic mountain landscape', 'ape'), false); // landscape⊅ape
+  assert.equal(isClipOnSubject('green plant leaves', 'ant'), false); // plant⊅ant
+  assert.equal(isClipOnSubject('elephant in savanna', 'ant'), false); // elephant⊅ant
+  assert.equal(isClipOnSubject('a flock of fowl', 'owl'), false); // fowl⊅owl
+  assert.equal(isClipOnSubject('ocean water spray', 'ray'), false); // spray⊅ray
+  assert.equal(isClipOnSubject('beetle on a leaf', 'bee'), false); // beetle⊅bee
+});
+
+test('isClipOnSubject returns undefined when there is nothing to judge on', () => {
+  assert.equal(isClipOnSubject(undefined, 'bee'), undefined);
+  assert.equal(isClipOnSubject('bee on a flower', undefined), undefined);
+  assert.equal(isClipOnSubject('bee', 'of'), undefined); // subject has no usable token
 });
 
 // --- pexelsSlugText --------------------------------------------------------------

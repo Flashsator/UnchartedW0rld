@@ -587,6 +587,7 @@ async function runShortsPipeline(
         runDir,
         usedUrls,
         pixabayCategory,
+        episode.subject,
       );
       portraitPaths = portrait.map((c) => relAsset(runDir, c.path));
     } catch (e) {
