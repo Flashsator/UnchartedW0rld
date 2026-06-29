@@ -583,7 +583,7 @@ export const STRUCTURE_POOL: Structure[] = [
     toneInstruction:
       'Investigator who has uncovered a hidden truth. Every sentence is a clue, withheld then dropped. Short sentences land hard, long sentences stack details. Never reassure. Never soften.',
     titleStyleNote:
-      'Reveal-implying. Lanes: "The X That [Quietly Stopped Being Discussed]", "Why X Should Not [Exist/Work]", "What X Hides", "The Truth About X They Stopped Talking About", "Hidden In Plain Sight: X".',
+      'Reveal-implying, but DECLARATIVE and subject-first: the frame lives in a surprising TRUE action, never a vague wrapper. Lanes: "The [Subject] That [Surprising Concrete Action]" (e.g. "The Termite That Explodes Itself to Kill Ants"), "A [Subject] [Does Concrete Thing] That Should Be Impossible", "[Subject]s [Do Surprising Thing] and Almost No One Noticed". The subject + a strong verb must sit in the first ~40 chars. NEVER a vague reveal-wrapper that buries the subject or its action: no "The Truth About X", "Why X Should Not Exist", "What X Hides", "Hidden In Plain Sight: X".',
     musicTags: ['dark cinematic suspense underscore', 'mysterious documentary drone', 'creeping cinematic pad', 'dark ambient reveal'],
     stingSubFreq: 38,
     stingTopFreq: 160,
@@ -623,7 +623,7 @@ export const STRUCTURE_POOL: Structure[] = [
     toneInstruction:
       'Investigative journalist writing a case file. Cool. Restrained. Cite when, where, who, what instrument. The viewer feels they are reading from a quietly-declassified dossier.',
     titleStyleNote:
-      'Investigator-frame. Lanes: "The Recording From [Place/Year]", "Case File: X", "What Was Logged In [Year]", "The Report They Filed And Forgot".',
+      'Dossier flavor, but DECLARATIVE and subject-first: lead with the creature and its recorded surprising action; any date or place is a SHORT trailing anchor, never the opening. Lanes: "The [Subject] That [Did Surprising Concrete Thing], Logged in [Year]" (year at the END), "A [Subject] [Does Concrete Thing] Science Recorded but Rarely Mentions", "The [Subject] That [Did Surprising Concrete Thing]". NEVER a label prefix or mystery-source opener: no "Case File: X", "The Recording From [Place]", "What Was Logged In [Year]", "The Report They Filed And Forgot".',
     musicTags: ['tense investigative ambient', 'documentary cinematic underscore', 'ticking suspense underscore', 'investigative ambient cinematic'],
     stingSubFreq: 42,
     stingTopFreq: 180,
@@ -658,7 +658,7 @@ export const STRUCTURE_POOL: Structure[] = [
     toneInstruction:
       'Narrative documentarian. Past tense. Third person. Cinematic descriptive prose. Specific dates, specific place names. Reads like a New Yorker long-read condensed to nine minutes.',
     titleStyleNote:
-      'Expedition-frame. Lanes: "The Expedition That [Quietly Confirmed/Found] X", "What They Found In [Place/Year]", "[Year]: When Someone Saw X", "The Voyage No One Talks About".',
+      'Discovery flavor, but DECLARATIVE and subject-first: name the creature and its surprising action; a place or year is a SHORT trailing anchor, never the opening. Lanes: "The [Subject] That [Does Surprising Concrete Thing] off [Place]" (place at the END), "A [Subject] [Does Concrete Thing] Found Only in [Place]", "The [Subject] That [Does Surprising Concrete Thing]". NEVER a mystery-source or narrative-time wrapper that hides the subject: no "What They Found In [Place/Year]", "[Year]: When Someone Saw X", "The Night [Someone] Saw X", "The Voyage No One Talks About".',
     musicTags: ['cinematic ambient documentary', 'organic ambient drone', 'expedition cinematic underscore', 'earth nature cinematic'],
     stingSubFreq: 46,
     stingTopFreq: 200,
@@ -693,7 +693,7 @@ export const STRUCTURE_POOL: Structure[] = [
     toneInstruction:
       'Knowing teacher who has peeled this apart many times. Patient, methodical, each section a deeper floor of a building you are walking down. Never condescending. Never breathless.',
     titleStyleNote:
-      'Explainer-frame. Lanes: "How X Actually Works", "Why X Is Not What You Think", "Beneath The Surface Of X", "What X Looks Like Four Layers Down".',
+      'Explainer flavor: a how/why frame is allowed HERE, but it MUST front-load the concrete subject + a surprising action in the first ~40 chars, never a soft vague question. Lanes: "How a [Subject] [Does Surprising Concrete Thing]" (e.g. "How a Cat Laps Water Against Gravity"), "The [Subject] That [Does Concrete Thing]", "A [Subject] [Does Surprising Thing] You Were Never Taught". NEVER a soft or vague wrapper with the stake missing: no "Why X Is Not What You Think", "How X Actually Works", "Beneath The Surface Of X", or a bare "Why a [Subject]...?" that omits the concrete action.',
     musicTags: ['cerebral ambient cinematic', 'minimal cinematic curious', 'investigative ambient cinematic', 'science documentary underscore'],
     stingSubFreq: 50,
     stingTopFreq: 220,
@@ -728,7 +728,7 @@ export const STRUCTURE_POOL: Structure[] = [
     toneInstruction:
       'Character-profile narration. The subject is the protagonist. Specific anatomy, specific environment, specific behaviors. Reads like a nature-doc profile crossed with a cryptid biography.',
     titleStyleNote:
-      'Profile-frame. Lanes: "X: The Creature That [Should Not Exist]", "Meet The X That [Quietly Breaks Biology]", "The X You Were Never Taught About".',
+      'Profile flavor, but DECLARATIVE and subject-first: the creature name leads, immediately followed by its signature impossible action. Lanes: "[Subject]: [Surprising Concrete Action]" (the subject name itself leads, one-word subject only, e.g. "Wood Frog: It Freezes Solid Every Winter and Wakes Up"), "A [Subject] [Does Concrete Thing] No Other Animal Can", "The [Subject] That [Does Surprising Concrete Thing]". NEVER filler that delays the action: no "Meet The X That...", no "The X You Were Never Taught About" left without the concrete surprising action.',
     musicTags: ['cinematic wildlife', 'organic ambient documentary', 'mysterious cinematic underscore', 'documentary cinematic underscore'],
     stingSubFreq: 40,
     stingTopFreq: 170,
