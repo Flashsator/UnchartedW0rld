@@ -309,22 +309,25 @@ silently resets every run.
   winning titles are passed as a soft flavor hint to the candidate proposer
   (deliberately NOT a hard weighting — a young channel's sample is taste, not
   statistics). Any failure falls back silently to the model's own topic choice.
-- **Shorts loop seamlessly (by design):** `OUTRO_SEC = 0` in `src/shortsGen.ts` —
-  a Short ends exactly where its narration ends so it loops cleanly
-  (replay rate is a Shorts ranking signal). NOTE (user directive 2026-06-23,
-  "分流"): the narration CONTENT is now SELF-CONTAINED — it resolves its own
-  posed question instead of cutting off mid-curiosity. The old cliffhanger drew
-  angry "what was the answer" comments AND the funnel it was meant to feed is
-  broken anyway (5.8% click-through; long views actually arrive via
-  `RELATED_VIDEO`), so it paid the goodwill cost for no benefit. The seamless
-  loop + hook re-arm stay exactly as below; what changed is the script no longer
-  strands the viewer mid-answer (see the Shorts-cut prompt rule below). The subscribe/watch-full end card in
-  `ShortsScene.tsx` is kept for reversibility but only renders when
-  `outroSec > 0`; the funnel lives in the description link (next bullet).
-  To tighten the loop, `ShortsScene.tsx` re-fades the opening hook card back in
-  over the final ~1.2s (`loopBackOpacity`, gated `!hasOutro` so it never fights
-  the reversible end card), so the seam lands back on the hook and re-arms the
-  curiosity gap on replay. The hook card itself is tuned for the swipe-decision
+- **Shorts end on a complete-feeling card (user directive 2026-06-29):**
+  `OUTRO_SEC = 2.5` in `src/shortsGen.ts` — after the narration ends, the Short
+  holds ~2.5s on the "Watch the full video + SUBSCRIBE" end card
+  (`ShortsScene.tsx`, gated on `outroSec > 0`) so it has a deliberate, finished
+  ending. This **REVERSES** the prior seamless-loop design (`OUTRO_SEC = 0`): a
+  loop with no ending read as "cut off / suddenly interrupted" even once the
+  narration resolved its own arc. The self-contained-narration directive
+  (2026-06-23 "分流") still stands — the narration CONTENT resolves its own posed
+  question (see the Shorts-cut prompt rule below); what changed is only the
+  on-screen *ending*, not the script. We traded the replay-loop benefit
+  (never data-proven; the Short→long funnel is ~5.8% and long views arrive via
+  `RELATED_VIDEO` anyway) for the complete ending + an on-screen subscribe CTA;
+  the funnel link still also lives in the description's `▶ Full video:` line.
+  Because `OUTRO_SEC > 0` now, `hasOutro` is true, which **auto-disables** the
+  loop-back hook re-fade (`loopBackOpacity` in `ShortsScene.tsx`, gated
+  `!hasOutro`) — the end card owns the tail, so that re-fade is dormant unless
+  `OUTRO_SEC` is set back to 0. The audio side already supported this: BGM keeps
+  playing through `[narrationSec, duration]` and fades over the last 0.8s while
+  narration stops at `narrationSec` (`muxShortsAudio` in `src/mux.ts`). The hook card itself is tuned for the swipe-decision
   moment as a **kinetic opener** (Shorts feel like a recited article without it):
   a near-hard cut-in (3-frame fade, not ~0.3s up from black, so frame 0 is
   footage), a yellow series **badge stinger** (`badgeIn`/`badgeScale`, settles by

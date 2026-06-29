@@ -232,10 +232,11 @@ export type ShortsManifest = {
   cardHook: string;
   sectionIdx: number;
   audioPath: string;
-  // Total composition length = narrationSec + outroSec. outroSec is currently 0
-  // so the short ends exactly where the narration ends and loops seamlessly
-  // (replay rate is a Shorts ranking signal). When outroSec > 0, ShortsScene
-  // fades in an end card (subscribe + watch full video) over that window.
+  // Total composition length = narrationSec + outroSec. outroSec is currently 2.5
+  // (user directive 2026-06-29) so the short holds on an end card (subscribe +
+  // watch full video) over that window for a complete, finished ending; the
+  // loop-back hook re-fade is disabled while outroSec > 0. Set outroSec = 0 to
+  // restore the seamless loop.
   duration: number;
   narrationSec: number;
   outroSec: number;

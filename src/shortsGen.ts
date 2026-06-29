@@ -13,13 +13,17 @@ const MAX_SHORTS_SEC = 55;
 // shortsArcSentences marker (e.g. the model marking sentence 1) is treated as
 // noise and we fall back to the blind time-based cut instead of shipping a 6s clip.
 const MIN_ARC_SEC = 15;
-// No end-card padding: Shorts loop, and replay rate is a ranking signal the
-// algorithm weighs heavily. Ending the cut right where the narration ends (the
-// trim already lands on a sentence boundary) makes the loop seam tight, so the
-// video restarts mid-curiosity instead of dying on a 2.6s static subscribe
-// panel viewers swipe away from. The long-video funnel lives in the
-// description's "▶ Full video:" link, not on-screen.
-const OUTRO_SEC = 0;
+// End-card outro window (seconds) held AFTER the narration ends. The Short's
+// final frames show the "Watch the full video + SUBSCRIBE" card (ShortsScene,
+// gated on outroSec > 0) so the Short has a deliberate, finished ending instead
+// of a hard cut that loops mid-sentence. Any value > 0 also auto-disables the
+// loop-back hook re-fade — the end card owns the tail (see ShortsScene
+// `hasOutro`). User directive 2026-06-29: the seamless loop (OUTRO_SEC = 0) read
+// as "cut off / suddenly interrupted" even once the narration resolved its own
+// self-contained arc, so we trade the (never-data-proven) replay-loop benefit
+// for a complete-feeling ending plus an on-screen subscribe CTA. The funnel link
+// still also lives in the description's "▶ Full video:" line.
+const OUTRO_SEC = 2.5;
 
 // Same-day teaser short publishes a couple hours AFTER the long video (which
 // lands at PUBLISH_HOUR_UTC) so the two don't split the launch slot and the
