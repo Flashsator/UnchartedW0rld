@@ -228,9 +228,23 @@ on-screen text unchanged) — localization is discovery metadata only.
 After the Shorts pipeline, two more **opt-in housekeeping passes** run over PAST
 uploads (env-gated, non-fatal, skipped on DRY_RUN via the early return):
 `autoCommentOnRecentVideos` (`src/engage.ts`, `ENABLE_AUTO_COMMENT`) posts one
-reply-bait engagement comment under each recently-public video that lacks ours —
-comments can't be posted on private/scheduled videos, so today's upload gets its
-comment on the NEXT run; and `rescueWorstPackaging` (`src/ctrRescue.ts`,
+reply-bait engagement comment under each recently-public video that lacks ours
+(the comment asks ONE effortless binary/"guess-before-you-look" question —
+those pull far more replies than open-ended ones). Comments can't be posted on
+private/scheduled videos, and today's upload only goes public at 19:00/21:00 UTC
+(hours after the 13:00 UTC run), so the pipeline itself only ever comments on
+EARLIER runs' videos. To stop today's Short waiting ~2 days for the next
+Mon/Wed/Fri run (long past its key early-push window), the SAME entry point is
+also driven by a standalone **`comment-pass.yml`** workflow (22:00 UTC daily +
+`workflow_dispatch`, `scripts/autoCommentPass.ts`) — a light isolated pass (no
+render/upload) that comments ~1h after the publish slots. The two triggers don't
+share the `.commented-videos` state file, so a **live `commentThreads.list`
+dedupe guard** (`channelAlreadyCommented` vs our own channel id) is the real
+cross-run idempotency check — it confirms our channel hasn't already commented
+before posting, so neither trigger ever double-comments. `comment-pass.yml`
+needs no new secrets (it reuses `daily.yml`'s `CLAUDE_CODE_OAUTH_TOKEN` +
+`YT_*`) and only takes effect once pushed to `main` (a scheduled workflow lives
+on the default branch). And `rescueWorstPackaging` (`src/ctrRescue.ts`,
 `ENABLE_CTR_RESCUE`) finds at most ONE long-form video (2–21 days old, ≥300
 impressions) whose CTR is below 70% of the channel median and pulls ONE
 packaging lever, **alternating across runs**: thumbnail (regenerated with a
@@ -291,7 +305,12 @@ silently resets every run.
 - **Topic demand validation:** `ENABLE_TOPIC_VALIDATION` (`'1'` in `daily.yml`).
   Before script-gen, `validateTopicDemand` (`src/topicResearch.ts`) asks the
   script CLI for `TOPIC_CANDIDATE_COUNT` (5) candidate angles — each pinned to a
-  common stock-filmed creature per invariant #3 — scores each by the median view
+  common stock-filmed creature per invariant #3, and each angle required to be a
+  **VISIBLE phenomenon** a stranger can picture in one glance (a behavior /
+  movement / transformation / reaction you could film), NEVER an invisible or
+  abstract angle (genetics, kinship, DNA, internal chemistry, statistics) with no
+  watchable moment — those reliably flop as Shorts because the viewer can't
+  picture anything in the first two seconds — scores each by the median view
   count of its query's top YouTube search hits (search.list = 100 quota units
   each, ~500/run of the 10k daily budget), and feeds the winner to
   `generateEpisode` as a topic *steer*, not an order: the script model still

@@ -174,6 +174,10 @@ async function proposeCandidates(
     `- subject MUST be a common, widely-filmed creature/plant that free stock-video libraries definitely have ` +
     `(cat, octopus, ant, sunflower...). NEVER an obscure species.\n` +
     `- the surprise lives in the ANGLE (a buried behavior, a counterintuitive mechanism), not in an exotic subject.\n` +
+    `- the ANGLE MUST be a VISIBLE phenomenon a stranger can picture in one glance — something you could actually ` +
+    `SEE or film happen (a behavior, a movement, a transformation, a reaction). NEVER an invisible/abstract angle ` +
+    `(genetics, kinship, DNA, internal chemistry, statistics) with no watchable moment — those reliably flop as ` +
+    `Shorts because the viewer can't picture anything in the first two seconds.\n` +
     `- searchQuery is what a curious viewer would actually type into YouTube for this angle ` +
     `(e.g. "how do cats drink water"), 3-8 words, no hashtags.` +
     avoidBlock +

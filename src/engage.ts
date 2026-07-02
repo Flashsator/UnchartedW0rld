@@ -19,6 +19,15 @@ import { log } from './utils.js';
 // PUBLIC videos (the API rejects private/scheduled ones), and uploads go public
 // hours after the run, so each run comments on videos published by PREVIOUS
 // runs — a housekeeping pass, not part of the upload itself.
+//
+// This same entry point is driven by TWO triggers: the daily pipeline run (13:00
+// UTC, comments on already-public earlier videos) and a standalone comment-pass
+// workflow (~1h after each publish slot, so today's upload gets its comment
+// within hours instead of waiting ~2 days for the next Mon/Wed/Fri run — well
+// past a Short's key push window). Those two runs do NOT share the local
+// .commented-videos state file, so a live commentThreads check
+// (channelAlreadyCommented) is the real cross-run idempotency guard: before
+// posting we confirm our own channel hasn't already commented on the video.
 
 function getClient() {
   if (!YT_CLIENT_ID || !YT_CLIENT_SECRET || !YT_REFRESH_TOKEN) {
@@ -65,11 +74,12 @@ export function extractFullVideoUrl(description: string): string | null {
 }
 
 // Deterministic fallback when the CLI comment generation fails — still a real
-// question, still carries the funnel link when there is one.
+// question, still carries the funnel link when there is one. Phrased as an
+// easy yes/no so it invites a reply even without topic specifics.
 export function fallbackComment(fullVideoUrl: string | null): string {
   return fullVideoUrl
-    ? `Which part surprised you the most? The full story is here: ${fullVideoUrl}`
-    : 'Which part surprised you the most? Tell us below.';
+    ? `Did this surprise you — yes or no? The full story is here: ${fullVideoUrl}`
+    : 'Did this surprise you — yes or no? Tell us why below.';
 }
 
 // A video is a comment target when it's public, recent, and not yet commented.
@@ -86,6 +96,27 @@ export function isCommentTarget(
   return ageMs >= 0 && ageMs <= recentDays * 86_400_000;
 }
 
+// True when any top-level comment on the video was authored by our own channel.
+// The local .commented-videos state file isn't shared between the daily pipeline
+// run and the standalone comment-pass workflow, so this live read — not the
+// state file — is what actually prevents double-commenting the same video.
+// Pure so it can be unit-tested without the API.
+export function channelAlreadyCommented(
+  threads: ReadonlyArray<{
+    snippet?: {
+      topLevelComment?: {
+        snippet?: { authorChannelId?: { value?: string | null } | null } | null;
+      } | null;
+    } | null;
+  }>,
+  myChannelId: string,
+): boolean {
+  if (!myChannelId) return false;
+  return threads.some(
+    (t) => t.snippet?.topLevelComment?.snippet?.authorChannelId?.value === myChannelId,
+  );
+}
+
 // --- Comment text -------------------------------------------------------------
 
 async function writeCommentText(title: string, fullVideoUrl: string | null): Promise<string> {
@@ -93,8 +124,9 @@ async function writeCommentText(title: string, fullVideoUrl: string | null): Pro
     const prompt =
       `You run the YouTube science channel "Wild Anomalies". Write ONE comment to post under your own video titled:\n` +
       `"${title}"\n\n` +
-      `Goal: spark replies. Ask a single genuine, specific question viewers will want to answer ` +
-      `(an opinion, a guess, or their own experience tied to this topic). ` +
+      `Goal: spark replies. Ask ONE short question that is effortless to answer — ideally an ` +
+      `either/or choice or a "guess before you look it up" prompt tied to THIS specific topic ` +
+      `(binary and guess questions pull far more replies than open-ended ones). ` +
       `Under 140 characters. No hashtags, no links, no emoji, no quotation marks, no preface. ` +
       `Output ONLY the comment text.`;
     const raw = (await runClaudeCli(prompt)).trim().replace(/^["']|["']$/g, '').replace(/\s+/g, ' ');
@@ -114,6 +146,30 @@ async function writeCommentText(title: string, fullVideoUrl: string | null): Pro
   }
 }
 
+// Live idempotency guard: has our own channel already posted a top-level comment
+// on this video? A failure to check (comments disabled, quota, transient) is
+// treated as "not commented" so a legit target isn't skipped — a duplicate
+// insert is far less likely (and lower harm) than never commenting.
+async function channelHasCommentLive(
+  yt: ReturnType<typeof getClient>,
+  videoId: string,
+  myChannelId: string,
+): Promise<boolean> {
+  try {
+    const res = await yt.commentThreads.list({
+      part: ['snippet'],
+      videoId,
+      maxResults: 100,
+      order: 'time',
+      textFormat: 'plainText',
+    });
+    return channelAlreadyCommented(res.data.items ?? [], myChannelId);
+  } catch (e) {
+    log(`Auto-comment: live comment check failed for ${videoId} (continuing): ${(e as Error).message}`);
+    return false;
+  }
+}
+
 // --- Main entry (called at the end of the pipeline; non-fatal) -----------------
 
 export async function autoCommentOnRecentVideos(): Promise<void> {
@@ -123,7 +179,15 @@ export async function autoCommentOnRecentVideos(): Promise<void> {
     const commented = loadCommentedIds();
 
     // Recent uploads via the uploads playlist (includes Shorts), newest first.
-    const ch = await yt.channels.list({ part: ['contentDetails'], mine: true });
+    // Fetch our own channel id in the same call — it powers the live dedupe guard
+    // (channelAlreadyCommented) so the two triggers never double-comment.
+    const ch = await yt.channels.list({ part: ['id', 'contentDetails'], mine: true });
+    const myChannelId = ch.data.items?.[0]?.id ?? '';
+    if (!myChannelId) {
+      // Should never happen with a valid OAuth token; surface it because it
+      // disables the live dedupe guard (the state file is the only fallback).
+      log('Auto-comment: could not resolve own channel id — live dedupe disabled this run.');
+    }
     const uploads = ch.data.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
     if (!uploads) return;
     const pl = await yt.playlistItems.list({
@@ -156,6 +220,15 @@ export async function autoCommentOnRecentVideos(): Promise<void> {
 
     for (const v of targets) {
       try {
+        // Cross-run guard: a prior trigger (daily run vs comment-pass) may have
+        // already commented on this video without this run's state file knowing.
+        // Confirm live before posting so we never double-comment.
+        if (myChannelId && (await channelHasCommentLive(yt, v.id, myChannelId))) {
+          commented.add(v.id);
+          saveCommentedIds(commented);
+          log(`Auto-comment: ${v.id} already has our comment (live check) — skipping.`);
+          continue;
+        }
         const fullVideoUrl = extractFullVideoUrl(v.description);
         const text = await writeCommentText(v.title, fullVideoUrl);
         await yt.commentThreads.insert({

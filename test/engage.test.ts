@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  channelAlreadyCommented,
   extractFullVideoUrl,
   fallbackComment,
   isCommentTarget,
@@ -71,6 +72,33 @@ test('skips videos with a future publish time or missing publishedAt', () => {
   assert.equal(isCommentTarget(future, new Set(), NOW, 7), false);
   const missing = { id: 'v2', privacyStatus: 'public' };
   assert.equal(isCommentTarget(missing, new Set(), NOW, 7), false);
+});
+
+// --- channelAlreadyCommented (live dedupe guard) ---------------------------------
+
+const MINE = 'UC_mine';
+function thread(authorId: string) {
+  return { snippet: { topLevelComment: { snippet: { authorChannelId: { value: authorId } } } } };
+}
+
+test('detects our own channel among the video comment threads', () => {
+  const threads = [thread('UC_someone'), thread(MINE), thread('UC_other')];
+  assert.equal(channelAlreadyCommented(threads, MINE), true);
+});
+
+test('returns false when our channel has not commented', () => {
+  const threads = [thread('UC_someone'), thread('UC_other')];
+  assert.equal(channelAlreadyCommented(threads, MINE), false);
+});
+
+test('returns false for empty threads or an unknown channel id', () => {
+  assert.equal(channelAlreadyCommented([], MINE), false);
+  assert.equal(channelAlreadyCommented([thread(MINE)], ''), false);
+});
+
+test('tolerates malformed thread rows without throwing', () => {
+  const threads = [{}, { snippet: {} }, { snippet: { topLevelComment: {} } }, thread(MINE)];
+  assert.equal(channelAlreadyCommented(threads, MINE), true);
 });
 
 // --- State file round-trip --------------------------------------------------------
