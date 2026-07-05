@@ -398,6 +398,21 @@ silently resets every run.
   invariant #1 holds (it only reshapes which TRUE narration moment leads). This
   REINFORCES, does not fight, the self-contained rule below: phenomenon/question
   up front, mechanism + full resolution in the body.
+  **Facet-collision + history-hook follow-up (user directive 2026-07-06):** the
+  7/3 sundew episode exposed two hook-level gaps, both fixed prompt-only in
+  `scriptGen.ts`. (a) The `DIFFERENT FACETS` rule only compared sections 3 and 5's
+  shortsHooks to EACH OTHER, so the section-3 Short shipped a hook nearly
+  word-for-word identical to the long video's TITLE (and the same "glue" facet as
+  the day-before teaser) — the overlapping audience had already seen the claim
+  and swiped (147 views vs the teaser's 653). The rule now also bans restating
+  the episode TITLE's claim or section 0's teaser-hook facet: title + teaser +
+  section-3 + section-5 must be four different facets. Note the TEASER may still
+  echo the title's central claim — that pairing is by design (it funnels into the
+  just-dropped long video); only sections 3/5 carry the wider ban. (b) The
+  phenomenon-first rule now explicitly bans the history/trivia opener (famous
+  scientist, discovery year — "A sundew obsessed Darwin…" gave a stranger nothing
+  to picture, 228 views). Still a steer, not a guarantee; invariant #1 untouched
+  (both rules only pick WHICH true claim leads, never invent one).
   **Self-contained payoff (user directive 2026-06-23, "分流"):** the TEASE applies
   only to that FIRST sentence — the section BODY must then RESOLVE the specific
   question it opened so a cold Short viewer gets a complete, satisfying answer
