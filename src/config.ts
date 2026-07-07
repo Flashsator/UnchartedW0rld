@@ -342,6 +342,13 @@ export type Series = {
   // schedule (see seriesForToday); retained as metadata and for an optional
   // future return to weighted random rotation.
   weight?: number;
+  // When true, this series' subject MUST be a vertebrate (mammal, bird, reptile,
+  // amphibian, or fish). Set on the animals series so the Monday "animals" day
+  // stops bleeding into insects/arachnids (bee 6/29, butterfly 7/7) — those are
+  // the Wednesday insects series' territory. Enforced deterministically by
+  // findTaxonMismatch (a regen trigger in generateEpisode) and by the
+  // topic-validation candidate filter, on top of the prompt steer.
+  vertebrateOnly?: boolean;
 };
 
 export const SERIES_POOL: Series[] = [
@@ -429,21 +436,22 @@ export const SERIES_POOL: Series[] = [
     key: 'animals',
     name: 'Beast Codex',
     theme:
-      'mammals, birds, reptiles, animal intelligence, hunting strategies, evolutionary oddities, animals that break biology',
+      'VERTEBRATE animals only — mammals, birds, reptiles, amphibians, and fish (never insects, spiders, or any invertebrate): animal intelligence, hunting strategies, evolutionary oddities, animals that break biology',
     subThemes: [
-      'an animal with a sense humans cannot perceive',
-      'a hunting strategy that took centuries to decode',
-      'a species that broke a rule of evolution',
-      'an intelligence test no one expected the animal to pass',
-      'a behavior recently caught on camera for the first time',
-      'a body plan that should not work but does',
-      'a social structure stranger than any human society',
+      'a vertebrate animal with a sense humans cannot perceive',
+      "a mammal or bird's hunting strategy that took centuries to decode",
+      'a vertebrate species that broke a rule of evolution',
+      'an intelligence test no one expected the mammal or bird to pass',
+      'a vertebrate behavior recently caught on camera for the first time',
+      'a body plan (mammal, bird, reptile, amphibian, or fish) that should not work but does',
+      'a social structure among mammals or birds stranger than any human society',
     ],
     categoryId: '27',
     imageStyle: 'wildlife photography, dramatic backlight, savanna or rainforest mood',
     musicQueries: ['cinematic wildlife', 'documentary nature cinematic', 'savanna ambient underscore', 'wildlife epic cinematic'],
     ambientQuery: 'savanna wildlife ambient',
     weight: 1.4,
+    vertebrateOnly: true,
   },
   {
     key: 'plants',
@@ -526,6 +534,73 @@ export const WEEKDAY_SERIES_MAP: Readonly<Record<number, string>> = {
   3: 'insects',
   5: 'plants',
 };
+
+// Common invertebrate subject nouns the animals series (vertebrateOnly) must
+// NOT pick — insects, arachnids, myriapods, and the well-known soft-bodied /
+// shelled invertebrates a stock-safe model actually reaches for. This is NOT a
+// full zoological ontology: it targets the COMMON, widely-filmed creatures the
+// STOCK-FOOTAGE RULE steers the model toward, which is exactly where the bleed
+// onto animals day happens (bee 6/29, butterfly 7/7). Entries are matched as
+// whole word-tokens (see findTaxonMismatch), so 'ant' never fires on 'anteater'
+// or 'antelope', and single-word compounds a stranger would type (butterfly,
+// dragonfly, ladybug, jellyfish, starfish, earthworm) are listed explicitly.
+// Deliberately excludes tokens that collide with vertebrate names ('coral' →
+// coral snake, bare 'worm' → slow worm, bare 'star' → star-nosed mole).
+export const INVERTEBRATE_SUBJECT_WORDS: readonly string[] = [
+  // insects
+  'insect', 'insects', 'bug', 'beetle', 'ant', 'bee', 'honeybee', 'bumblebee',
+  'wasp', 'hornet', 'yellowjacket', 'butterfly', 'moth', 'caterpillar',
+  'dragonfly', 'damselfly', 'fly', 'housefly', 'horsefly', 'mayfly', 'firefly',
+  'mosquito', 'gnat', 'midge', 'flea', 'louse', 'aphid', 'termite', 'cockroach',
+  'roach', 'cricket', 'grasshopper', 'katydid', 'locust', 'mantis', 'ladybug',
+  'ladybird', 'cicada', 'earwig', 'silverfish', 'weevil', 'bedbug', 'maggot',
+  'grub', 'mealworm', 'silkworm', 'glowworm',
+  // arachnids
+  'spider', 'tarantula', 'arachnid', 'scorpion', 'harvestman', 'mite', 'tick',
+  // myriapods
+  'centipede', 'millipede',
+  // molluscs
+  'snail', 'slug', 'octopus', 'squid', 'cuttlefish', 'nautilus', 'clam',
+  'oyster', 'mussel', 'nudibranch',
+  // crustaceans
+  'crab', 'lobster', 'crayfish', 'shrimp', 'prawn', 'krill', 'barnacle',
+  // cnidarians / echinoderms / other inverts
+  'jellyfish', 'anemone', 'starfish', 'seastar', 'urchin', 'earthworm', 'leech',
+  'tapeworm', 'roundworm', 'flatworm', 'nematode', 'tardigrade',
+];
+
+const INVERTEBRATE_SUBJECT_SET: ReadonlySet<string> = new Set(INVERTEBRATE_SUBJECT_WORDS);
+
+// Light singularizer so a plural subject token still matches ('bees' → 'bee',
+// 'spiders' → 'spider', 'butterflies' → 'butterfly', 'flies' → 'fly'). Only the
+// common English cases; anything odd falls through unchanged (the singular is
+// already in the set for those).
+function depluralize(token: string): string {
+  if (token.length > 4 && token.endsWith('ies')) return `${token.slice(0, -3)}y`;
+  if (token.length > 3 && token.endsWith('s') && !token.endsWith('ss') && !token.endsWith('us')) {
+    return token.slice(0, -1);
+  }
+  return token;
+}
+
+// Deterministic taxonomy guard: returns the offending invertebrate word if
+// `subject` violates the series' vertebrate-only constraint, else null. Series
+// without vertebrateOnly always pass (returns null). Matches whole word-tokens
+// only, so vertebrate names that merely CONTAIN an invertebrate substring
+// ('anteater', 'antelope', 'flycatcher', 'star-nosed mole') correctly pass.
+// Conservative by design: it can only ever FLAG a token that is a known
+// invertebrate, and a flag triggers a bounded regenerate (not a hard failure),
+// so a rare edge case (e.g. the bird 'bee hummingbird') just costs one retry.
+export function findTaxonMismatch(subject: string | undefined, series: Series): string | null {
+  if (!series.vertebrateOnly || !subject) return null;
+  const tokens = subject.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  for (const token of tokens) {
+    if (INVERTEBRATE_SUBJECT_SET.has(token) || INVERTEBRATE_SUBJECT_SET.has(depluralize(token))) {
+      return token;
+    }
+  }
+  return null;
+}
 
 export type HookPattern = { name: string; example: string; rule: string };
 

@@ -517,6 +517,33 @@ silently resets every run.
   relevance/vision/portrait-floor filters; a failed segment cut DROPS that slot
   rather than repeating a hero frame-0. Shorts inherit the same path (up to 2
   distinct portrait clips per beat).
+- **Animals series is vertebrates-only (weekday-series bleed fix, user directive
+  2026-07-07):** the Monday `animals` series kept shipping insects (bee 6/29,
+  butterfly 7/7) because its theme/subThemes were taxonomy-agnostic AND the
+  topic-demand steer treats high-view insects (bees/butterflies) as valid
+  "animals". The `animals` series now carries `vertebrateOnly: true` (in
+  `SERIES_POOL`, `src/config.ts`) — mammal/bird/reptile/amphibian/fish ONLY,
+  never an insect/arachnid/invertebrate (those are the Wednesday insects series'
+  territory). Enforced in **three layers**, forward-fix only (live videos
+  untouched): (1) a hard TAXONOMY-CONSTRAINT prompt block in `generateEpisode`
+  (`scriptGen.ts`) + a HARD-RULE line in the topic-candidate proposer
+  (`topicResearch.ts`), both gated on `series.vertebrateOnly`; (2) a deterministic
+  regen guard — `findTaxonMismatch(subject, series)` (pure, in `config.ts`,
+  unit-tested in `test/config.test.ts`) matches the subject against
+  `INVERTEBRATE_SUBJECT_WORDS` by **whole word-token** (so 'ant' never fires on
+  'anteater'/'antelope', 'fly' not on 'flycatcher') and becomes a fourth
+  accept-last regen trigger in `generateEpisode` alongside
+  `collision`/`tooShort`/`arcFail` (bounded by `SCRIPT_GEN_ATTEMPTS`, so it never
+  stalls; a rare bird like 'bee hummingbird' just costs one retry); (3) a
+  deterministic candidate filter in `validateTopicDemand` (`topicResearch.ts`)
+  that drops invertebrate candidates before scoring so the demand steer can never
+  push an insect (empties-to-fallback: model keeps its own choice). **Invariant #1
+  holds** — every layer only reshapes WHICH true subject/taxon is chosen; no
+  narration, overlay, or figure is touched. `INVERTEBRATE_SUBJECT_WORDS`
+  deliberately excludes tokens that collide with vertebrate names ('coral' → coral
+  snake, bare 'worm' → slow worm, bare 'star' → star-nosed mole). Other series
+  (insects/plants) have no `vertebrateOnly` flag, so all three guards are inert
+  there.
 - **Schedule:** `PUBLISH_WEEKDAYS_UTC = [1,3,5]`; `WEEKDAY_SERIES_MAP` = Mon→animals,
   Wed→insects, Fri→plants. The run is *triggered* at 13:00 UTC but each long video
   is *scheduled public* at `PUBLISH_HOUR_UTC` = **19:00 UTC** (the US-afternoon

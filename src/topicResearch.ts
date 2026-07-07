@@ -5,6 +5,7 @@ import {
   YT_CLIENT_ID,
   YT_CLIENT_SECRET,
   YT_REFRESH_TOKEN,
+  findTaxonMismatch,
   type Series,
 } from './config.js';
 import { extractJsonCandidates, runClaudeCli } from './scriptGen.js';
@@ -167,12 +168,21 @@ async function proposeCandidates(
           .map((t) => `  • ${t}`)
           .join('\n')
       : '';
+  // Vertebrate-only hard rule for the animals series (series.vertebrateOnly).
+  // Without it the demand steer happily proposes a bee/butterfly (they ARE
+  // high-demand) and pushes an insect onto the Monday animals day; the
+  // findTaxonMismatch filter in validateTopicDemand is the deterministic
+  // backstop, this just keeps the proposals clean at the source.
+  const taxonRule = series.vertebrateOnly
+    ? `- subject MUST be a VERTEBRATE (mammal, bird, reptile, amphibian, or fish). NEVER an insect, spider, or other invertebrate — no bees, butterflies, ants, beetles, spiders, octopuses, crabs, snails, or worms (those belong to a different series).\n`
+    : '';
   const prompt =
     `You plan episodes for "Wild Anomalies", a YouTube science mini-documentary channel. ` +
     `Today's series is "${series.name}" (theme: ${series.theme}); today's sub-theme: "${subTheme}".\n\n` +
     `Propose ${TOPIC_CANDIDATE_COUNT} candidate episode angles. HARD RULES for every candidate:\n` +
     `- subject MUST be a common, widely-filmed creature/plant that free stock-video libraries definitely have ` +
     `(cat, octopus, ant, sunflower...). NEVER an obscure species.\n` +
+    taxonRule +
     `- the surprise lives in the ANGLE (a buried behavior, a counterintuitive mechanism), not in an exotic subject.\n` +
     `- the ANGLE MUST be a VISIBLE phenomenon a stranger can picture in one glance — something you could actually ` +
     `SEE or film happen (a behavior, a movement, a transformation, a reaction). NEVER an invisible/abstract angle ` +
@@ -234,9 +244,33 @@ export async function validateTopicDemand(
       log('Topic validation: no parsable candidates — falling back to the model\'s own choice.');
       return undefined;
     }
+    // Deterministic backstop for a vertebrateOnly series: drop any invertebrate
+    // candidate (bee/butterfly/etc.) the proposer slipped past the prompt rule,
+    // so the demand steer can never push an insect onto the animals day. If it
+    // empties the pool, fall back to the model's own choice rather than steer
+    // toward a banned taxon.
+    const eligible = series.vertebrateOnly
+      ? candidates.filter((c) => {
+          const bad = findTaxonMismatch(c.subject, series);
+          if (bad) {
+            log(
+              `Topic validation: dropped invertebrate candidate "${c.subject}" ("${bad}") — ` +
+                `"${series.name}" is vertebrates-only.`,
+            );
+          }
+          return bad === null;
+        })
+      : candidates;
+    if (eligible.length === 0) {
+      log(
+        `Topic validation: every candidate was an invertebrate for vertebrates-only "${series.name}" — ` +
+          `falling back to the model's own choice.`,
+      );
+      return undefined;
+    }
     const yt = getClient();
     const scored: ScoredCandidate[] = [];
-    for (const c of candidates) {
+    for (const c of eligible) {
       const { medianViews, floorViews } = await scoreQuery(yt, c.searchQuery);
       scored.push({ ...c, medianViews, floorViews });
       log(

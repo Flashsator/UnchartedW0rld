@@ -5,6 +5,7 @@ import {
   TARGET_MINUTES,
   TARGET_WORDS,
   WORDS_PER_SECTION,
+  findTaxonMismatch,
   type HookPattern,
   type Series,
   type Structure,
@@ -276,12 +277,20 @@ export async function generateEpisode(
   // Measured pacing feedback (from retention.ts): where this channel's real
   // viewers leave. Shapes pacing only — never the facts, never the safety rules.
   const retentionBlock = retentionDirective ? `\n\n${retentionDirective}` : '';
+  // Vertebrate-only steer for the animals series (series.vertebrateOnly). The
+  // deterministic findTaxonMismatch guard in the retry loop below is the real
+  // enforcement; this block just biases the model so it usually lands a
+  // vertebrate on the first attempt instead of burning a regenerate. Only the
+  // animals day carries it — insects/plants leave it empty.
+  const taxonBlock = series.vertebrateOnly
+    ? `\n\nTAXONOMY CONSTRAINT (HARD RULE — this series is vertebrates ONLY): the "subject" MUST be a VERTEBRATE animal — a mammal, bird, reptile, amphibian, or fish. It must NOT be an insect, spider, scorpion, or any other invertebrate: bee, butterfly, ant, beetle, moth, wasp, spider, octopus, crab, snail, jellyfish, worm and the like are ALL BANNED here (they belong to a different series). Pick a familiar vertebrate and put the surprise in its buried behavior.`
+    : '';
   const userPrompt = `Series: ${series.name}
 Theme: ${series.theme}
 Sub-topic focus: ${subTheme}
 Structural template: ${structure.label} (${structure.key})
 
-Pick ONE specific surprising topic within this sub-topic focus that fits a ${TARGET_MINUTES}-minute mini-documentary. Use the "${hook.name}" hook style for the opening. Follow the ${structure.label} per-section role specification exactly. Write the full script JSON now.${avoidBlock}${winBlock}${directiveBlock}${retentionBlock}`;
+Pick ONE specific surprising topic within this sub-topic focus that fits a ${TARGET_MINUTES}-minute mini-documentary. Use the "${hook.name}" hook style for the opening. Follow the ${structure.label} per-section role specification exactly. Write the full script JSON now.${taxonBlock}${avoidBlock}${winBlock}${directiveBlock}${retentionBlock}`;
 
   const fullPrompt = `${buildSystemPrompt(hook, structure, voice, subTheme)}\n\n---\n\n${userPrompt}`;
 
@@ -302,6 +311,11 @@ Pick ONE specific surprising topic within this sub-topic focus that fits a ${TAR
       const collision = findTitleCollision(normalized.title, avoidTitles);
       const wordCount = totalNarrationWords(normalized);
       const tooShort = wordCount < MIN_TOTAL_WORDS;
+      // Deterministic taxonomy guard (weekday-series bleed fix): on the animals
+      // series (series.vertebrateOnly) reject an insect/arachnid/invertebrate
+      // subject and regenerate, so the Monday animals day never ships a bee or a
+      // butterfly again. null for every series without vertebrateOnly.
+      const taxonMismatch = findTaxonMismatch(normalized.subject, series);
       // Lever B — Shorts self-contained-arc verification. Deterministic
       // (always on, no CLI): which Short sections (0/3/5) mark a tease→answer
       // arc whose narration overflows the ~50s Short window and would be chopped.
@@ -312,13 +326,13 @@ Pick ONE specific surprising topic within this sub-topic focus that fits a ${TAR
       // marker and flags any section that never resolves its hook in the window.
       let episode = normalized;
       let judgeUnresolved: number[] = [];
-      if (!collision && !tooShort && !hasArcOverflow && ENABLE_SHORTS_ARC_QA) {
+      if (!collision && !tooShort && !taxonMismatch && !hasArcOverflow && ENABLE_SHORTS_ARC_QA) {
         const refined = await refineShortsArcs(normalized, runClaudeCli);
         episode = refined.episode;
         judgeUnresolved = refined.unresolved;
       }
       const arcFail = hasArcOverflow || judgeUnresolved.length > 0;
-      if ((collision || tooShort || arcFail) && attempt < SCRIPT_GEN_ATTEMPTS) {
+      if ((collision || tooShort || taxonMismatch || arcFail) && attempt < SCRIPT_GEN_ATTEMPTS) {
         if (collision) {
           log(
             `Topic collision: "${normalized.title}" overlaps already-published "${collision}". Regenerating (attempt ${attempt}/${SCRIPT_GEN_ATTEMPTS})...`,
@@ -327,6 +341,11 @@ Pick ONE specific surprising topic within this sub-topic focus that fits a ${TAR
         if (tooShort) {
           log(
             `Script only ${wordCount} words (floor ${MIN_TOTAL_WORDS} for ~${TARGET_WORDS}-word target). Regenerating (attempt ${attempt}/${SCRIPT_GEN_ATTEMPTS})...`,
+          );
+        }
+        if (taxonMismatch) {
+          log(
+            `Subject "${normalized.subject}" is an invertebrate ("${taxonMismatch}") but "${series.name}" is vertebrates-only. Regenerating (attempt ${attempt}/${SCRIPT_GEN_ATTEMPTS})...`,
           );
         }
         if (arcFail) {
@@ -344,6 +363,11 @@ Pick ONE specific surprising topic within this sub-topic focus that fits a ${TAR
       if (tooShort) {
         log(
           `Script still only ${wordCount} words after ${attempt} attempts; accepting to avoid stalling the pipeline.`,
+        );
+      }
+      if (taxonMismatch) {
+        log(
+          `Subject "${episode.subject}" still an invertebrate ("${taxonMismatch}") after ${attempt} attempts for vertebrates-only "${series.name}"; accepting to avoid stalling the pipeline.`,
         );
       }
       if (arcFail) {
