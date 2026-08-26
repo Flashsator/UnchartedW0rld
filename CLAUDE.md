@@ -195,6 +195,15 @@ video, fully separate from `daily.yml`.
    This is a safety net, NOT a strategy — a real on-subject clip always wins; the
    goal is that a bad slot degrades to a clean designed card, never off-topic
    scenery.
+   **Observability (`src/brollStats.ts`).** Every b-roll safety net above
+   (vision-drop, Commons/Unsplash fill, hero-segment reuse, cross-section
+   backfill, explainer cards, rest stills) bumps a run-scoped counter, and
+   `pipeline.ts` logs a one-line `B-roll fallbacks: …` tally at the end of step
+   3. It is pure telemetry (never changes which clip ships), so use the Actions
+   log to see which nets actually earn their keep before adding another — a net
+   that never fires over weeks is a removal candidate, and one that fires
+   constantly is an upstream unfilmable-subject smell (fix at the topic gate, not
+   downstream). Pure parts unit-tested in `test/brollStats.test.ts`.
 4. **Length is mandatory.** Scripts target ~`TARGET_MINUTES` (9.5–10 min) so the
    final cut clears 8:00 for YouTube mid-roll ads. There's a word-count floor in
    the script prompt; don't lower it.

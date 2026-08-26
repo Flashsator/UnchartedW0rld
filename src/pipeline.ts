@@ -64,6 +64,12 @@ import type {
   RuntimeProfile,
 } from './types.js';
 import { ensureDir, log, safeFilename } from './utils.js';
+import {
+  bumpBrollStat,
+  formatBrollStats,
+  resetBrollStats,
+  snapshotBrollStats,
+} from './brollStats.js';
 
 function relAsset(runDir: string, abs: string): string {
   return path.relative(runDir, abs).replace(/\\/g, '/');
@@ -163,6 +169,9 @@ async function main(): Promise<void> {
   });
 
   log('Step 3/8: Fetch b-roll for each section');
+  // Zero the run-scoped fallback counters; each safety-net site bumps them and
+  // the totals are logged once after the section loop (see brollStats.ts).
+  resetBrollStats();
   // Pixabay-only category constraint derived from today's series, so its fuzzy
   // matcher stays inside the right corner of the library.
   const pixabayCategory = pixabayCategoryForSeries(series.key);
@@ -236,6 +245,7 @@ async function main(): Promise<void> {
             `(episode subject is unfilmable — invariant #3)`,
         );
       }
+      bumpBrollStat('sectionBackfill');
       log(
         `Section ${i + 1}/${sectionAudios.length} b-roll empty — backfilled ${clips.length} on-subject ` +
           `clip(s) borrowed from other sections (invariant #3 smell — subject may be hard to film)`,
@@ -283,12 +293,18 @@ async function main(): Promise<void> {
       );
       if (still) shotStills[idx] = relAsset(runDir, still);
     }
+    bumpBrollStat('cardFired', shotCards.filter((c) => c !== null).length);
+    bumpBrollStat('restStill', shotStills.filter(Boolean).length);
     broll.push(paths);
     cutTimesBySection.push(cutTimes);
     shotCardsBySection.push(shotCards);
     shotStillsBySection.push(shotStills);
     log(`Rest stills: ${shotStills.filter(Boolean).length}/${clips.length} in section`);
   }
+  // One-line tally of how often each b-roll safety net fired this run, so the
+  // Actions log doubles as an observability record of which nets earn their keep
+  // (and flags an over-firing net — an upstream unfilmable-subject smell).
+  log(formatBrollStats(snapshotBrollStats()));
 
   const interludeCount = sectionAudios.length >= 3
     ? Math.max(1, Math.floor(sectionAudios.length / 3))
