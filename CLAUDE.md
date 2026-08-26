@@ -239,7 +239,18 @@ uploads (env-gated, non-fatal, skipped on DRY_RUN via the early return):
 `autoCommentOnRecentVideos` (`src/engage.ts`, `ENABLE_AUTO_COMMENT`) posts one
 reply-bait engagement comment under each recently-public video that lacks ours
 (the comment asks ONE effortless binary/"guess-before-you-look" question —
-those pull far more replies than open-ended ones). Comments can't be posted on
+those pull far more replies than open-ended ones). **Shorts-first + link-free
+(subs directive 2026-08-26):** the pass already covers Shorts (the uploads
+playlist includes them), but the analytics showed Shorts averaging ~0.3
+comments — the blind newest-first order let same-day long uploads eat the
+`AUTO_COMMENT_MAX_PER_RUN` (3) slots. Targets are now classified by duration
+(`parseIsoDurationSec`/`isShortDuration`, ≤180s = Short) and **Shorts are
+seeded first** (`orderCommentTargets`, pure/unit-tested) since Shorts are the
+reach/subscriber engine. A Short's comment is also now **pure reply-bait with
+NO funnel link**: the link diluted reply intent and pushed the near-dead
+Short→long funnel (~0.26%); the description's own `▶ Full video:` line is
+untouched, so the funnel link itself isn't removed. Long-video comments keep
+the (currently unused) funnel-append path. Comments can't be posted on
 private/scheduled videos, and today's upload only goes public at 19:00/21:00 UTC
 (hours after the 13:00 UTC run), so the pipeline itself only ever comments on
 EARLIER runs' videos. To stop today's Short waiting ~2 days for the next
