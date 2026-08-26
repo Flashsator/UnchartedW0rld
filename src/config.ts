@@ -186,6 +186,23 @@ export const ENABLE_BROLL_VISION_QA = process.env.ENABLE_BROLL_VISION_QA === '1'
 // model. Once one clip passes, this beat's remaining fills are trusted.
 export const BROLL_VISION_QA_MAX_CHECKS = Number(process.env.BROLL_VISION_QA_MAX_CHECKS ?? 2);
 
+// --- Explainer-card AI illustration background (opt-in) ------------------------
+// When ENABLE_BROLL_AI_ART=1, a slot that ENABLE_BROLL_CARDS already decided to
+// render as an explainer FactCard (i.e. footage was PROVEN off-subject) MAY get a
+// stylized, non-photoreal AI illustration as the card's BACKGROUND instead of the
+// geometric schematic. It NEVER replaces real footage — it only upgrades a card
+// that was going to render anyway. Deliberately conservative: a hard per-episode
+// cap (FLUX free-tier quota is largely spent on the thumbnail), a vision-QA gate
+// that drops any illustration with an anatomical error or that reads as
+// photoreal, and a clean fall-back to the schematic on any failure/gate-off. The
+// card's on-screen TEXT stays verbatim narration, so invariant #1 holds — the
+// illustration is decorative background that asserts no number or claim. Default
+// OFF (measure brollStats first); long-form only. See src/brollArt.ts.
+export const ENABLE_BROLL_AI_ART = process.env.ENABLE_BROLL_AI_ART === '1';
+// Hard ceiling on generated illustrations per EPISODE (not per section), because
+// each FLUX call draws on the same limited free-tier budget the thumbnail uses.
+export const BROLL_AI_ART_MAX_PER_EPISODE = Number(process.env.BROLL_AI_ART_MAX_PER_EPISODE ?? 2);
+
 // --- Shorts self-contained-arc QA (opt-in) ------------------------------------
 // When ENABLE_SHORTS_ARC_QA=1, after script-gen an LLM judge verifies each Short
 // section (0/3/5) both POSES and fully RESOLVES its hook within the ~50s Short

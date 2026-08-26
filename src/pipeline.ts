@@ -2,11 +2,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   BGM_VOLUME,
+  BROLL_AI_ART_MAX_PER_EPISODE,
   BROLL_CLIP_SEC,
   CHANNEL_FOOTER,
   COLD_OPEN_SEC,
   DRY_RUN,
   ENABLE_ANALYTICS_FEEDBACK,
+  ENABLE_BROLL_AI_ART,
   FORCE_RUN,
   INTER_SECTION_GAP_SEC,
   INTERLUDE_SEC,
@@ -51,6 +53,7 @@ import { rescueWorstPackaging } from './ctrRescue.js';
 import { auditRecentContent } from './contentAudit.js';
 import { extractIconEvents } from './iconExtractor.js';
 import { planShotCards } from './brollCards.js';
+import { generateCardIllustration } from './brollArt.js';
 import { computeCutTimes, pickRestSlots, sectionClipSeconds } from './cuts.js';
 import { buildShortsManifest, planShortsForToday, publishAtFor } from './shortsGen.js';
 import type {
@@ -200,6 +203,12 @@ async function main(): Promise<void> {
   // instead of hard-failing at step 3/8 the way a bare fetchBrollForBeats throw
   // would; the run still fails loudly only if NO section anywhere got footage.
   const collectedClips: BrollClip[] = [];
+  // Episode-wide budget for AI illustration backgrounds on explainer cards
+  // (ENABLE_BROLL_AI_ART, OFF by default). Spans sections because it draws on the
+  // same limited FLUX free-tier quota as the thumbnail; `artSeq` just makes each
+  // generated file unique.
+  let artBudget = ENABLE_BROLL_AI_ART ? BROLL_AI_ART_MAX_PER_EPISODE : 0;
+  let artSeq = 0;
   for (let i = 0; i < sectionAudios.length; i++) {
     const sec = sectionAudios[i]!;
     // Ordered per-beat shot list (subject-anchored in scriptGen) so footage
@@ -268,6 +277,23 @@ async function main(): Promise<void> {
       seriesKey: series.key,
       isColdOpenSection: i === 0,
     });
+    // AI illustration background for explainer cards (ENABLE_BROLL_AI_ART, OFF
+    // by default): upgrade a card that's ALREADY going to render — never real
+    // footage — with a vision-QA'd stylized illustration, up to the episode
+    // budget. Any gate-off / failure leaves illustrationPath unset, so the card
+    // falls back to its geometric schematic. Best-effort/non-fatal.
+    if (artBudget > 0) {
+      for (const card of shotCards) {
+        if (artBudget <= 0) break;
+        if (!card) continue;
+        const art = await generateCardIllustration(card, runDir, artSeq++);
+        if (art) {
+          card.illustrationPath = relAsset(runDir, art);
+          artBudget--;
+          bumpBrollStat('cardIllustration');
+        }
+      }
+    }
     // Rest beats (long-form anti-fatigue): pick at most one slot per section to
     // render as a near-motionless still so the eye gets a pause between moving
     // shots. Conservative (never slot 0 / a card slot / a number beat); skipped

@@ -24,6 +24,7 @@ export type BrollStatKey =
   | 'heroSegmentDropped' // a hero segment couldn't be cut, so the slot was dropped (not repeated)
   | 'sectionBackfill' // a whole section came up empty and borrowed on-subject clips from others
   | 'cardFired' // an off-subject slot was replaced by a self-built explainer card
+  | 'cardIllustration' // an explainer card got a vision-QA'd AI illustration background
   | 'restStill'; // a slot was rendered as a near-motionless rest-beat still
 
 export const BROLL_STAT_KEYS: BrollStatKey[] = [
@@ -34,6 +35,7 @@ export const BROLL_STAT_KEYS: BrollStatKey[] = [
   'heroSegmentDropped',
   'sectionBackfill',
   'cardFired',
+  'cardIllustration',
   'restStill',
 ];
 
@@ -46,6 +48,7 @@ const STAT_LABELS: Record<BrollStatKey, string> = {
   heroSegmentDropped: 'hero-seg-dropped',
   sectionBackfill: 'section-backfill',
   cardFired: 'cards',
+  cardIllustration: 'card-art',
   restStill: 'rest-stills',
 };
 
@@ -60,6 +63,7 @@ export function emptyBrollStats(): BrollStats {
     heroSegmentDropped: 0,
     sectionBackfill: 0,
     cardFired: 0,
+    cardIllustration: 0,
     restStill: 0,
   };
 }
