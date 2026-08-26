@@ -407,6 +407,25 @@ silently resets every run.
   invariant #1 holds (it only reshapes which TRUE narration moment leads). This
   REINFORCES, does not fight, the self-contained rule below: phenomenon/question
   up front, mechanism + full resolution in the body.
+  **High-stakes drama, not mere visibility (data directive 2026-08-26).** A
+  120-day pull of all ~80 published Shorts (the `shorts-hook-report.yml` output)
+  showed that VISIBLE-but-low-stakes openers still flop 3-5x (a click beetle
+  "snapping faster than muscle", a garden spider "building a perfect web", a
+  tree's longevity), while every top performer carried real DRAMA in one of five
+  categories: predation/hunting, threat/defense/escape, deception/mimicry, a
+  hidden weapon or a sense we don't have, or an "impossible body" that forces a
+  "how?". So visibility is necessary but not sufficient — the winning lever is
+  STAKES. Two prompt-only edits push both the topic choice and the hook toward
+  those categories and explicitly DEMOTE the proven losers (longevity, seasonal
+  timing / life-cycle stages, kinship / social rank, slow growth, pure abstract
+  mechanism): the topic-candidate proposer's HIGH-STAKES DRAMA hard rule
+  (`topicResearch.ts`) and a stakes clause on the `LEAD WITH THE PHENOMENON` rule
+  (`scriptGen.ts`). Invariant #1 holds — both only reshape WHICH true angle/moment
+  leads; a hook may never invent stakes the episode doesn't deliver. This is the
+  north-star lever while the channel optimizes for **subscribers via Shorts** (the
+  Short→long funnel converts only ~0.26%, so long-form reach is deprioritized
+  until it's the focus): reach drives subs, and subject/angle drama drives reach
+  far more than hook wording does.
   **Facet-collision + history-hook follow-up (user directive 2026-07-06):** the
   7/3 sundew episode exposed two hook-level gaps, both fixed prompt-only in
   `scriptGen.ts`. (a) The `DIFFERENT FACETS` rule only compared sections 3 and 5's

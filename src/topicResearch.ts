@@ -188,6 +188,15 @@ async function proposeCandidates(
     `SEE or film happen (a behavior, a movement, a transformation, a reaction). NEVER an invisible/abstract angle ` +
     `(genetics, kinship, DNA, internal chemistry, statistics) with no watchable moment — those reliably flop as ` +
     `Shorts because the viewer can't picture anything in the first two seconds.\n` +
+    `- HIGH-STAKES DRAMA (the single biggest reach lever, measured across ~80 published Shorts): being merely ` +
+    `visible is NOT enough — a low-stakes visible angle still flops (a click beetle "snapping faster than muscle", ` +
+    `a spider "building a perfect web", a tree's longevity all underperformed 3-5x even though you can see them). ` +
+    `The angle MUST carry real stakes, falling into one of these PROVEN-WINNING categories: (a) predation or hunting, ` +
+    `(b) threat, defense, or a narrow escape, (c) deception or mimicry (pretending to be something else), ` +
+    `(d) a hidden weapon or a sense humans don't have, or (e) an "impossible body" that makes a stranger ask ` +
+    `"how is that even possible?". DEMOTE the proven losers: longevity/age, seasonal timing or life-cycle stages, ` +
+    `kinship or social rank, slow growth, and pure internal mechanism with no drama. Pick the dramatic WHAT ` +
+    `(what it DOES to survive), not the slow or abstract HOW.\n` +
     `- searchQuery is what a curious viewer would actually type into YouTube for this angle ` +
     `(e.g. "how do cats drink water"), 3-8 words, no hashtags.` +
     avoidBlock +
