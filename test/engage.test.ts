@@ -8,7 +8,10 @@ import {
   extractFullVideoUrl,
   fallbackComment,
   isCommentTarget,
+  isShortDuration,
   loadCommentedIds,
+  orderCommentTargets,
+  parseIsoDurationSec,
   saveCommentedIds,
 } from '../src/engage.ts';
 
@@ -72,6 +75,49 @@ test('skips videos with a future publish time or missing publishedAt', () => {
   assert.equal(isCommentTarget(future, new Set(), NOW, 7), false);
   const missing = { id: 'v2', privacyStatus: 'public' };
   assert.equal(isCommentTarget(missing, new Set(), NOW, 7), false);
+});
+
+// --- parseIsoDurationSec / isShortDuration --------------------------------------
+
+test('parses ISO-8601 durations into seconds', () => {
+  assert.equal(parseIsoDurationSec('PT58S'), 58);
+  assert.equal(parseIsoDurationSec('PT9M42S'), 9 * 60 + 42);
+  assert.equal(parseIsoDurationSec('PT1H2M3S'), 3600 + 120 + 3);
+  assert.equal(parseIsoDurationSec('PT3M'), 180);
+});
+
+test('unparseable duration is 0 (classifies as long, the safe default)', () => {
+  assert.equal(parseIsoDurationSec(''), 0);
+  assert.equal(parseIsoDurationSec('garbage'), 0);
+  assert.equal(isShortDuration(parseIsoDurationSec('garbage')), false);
+});
+
+test('isShortDuration draws the line at 180s and rejects 0', () => {
+  assert.equal(isShortDuration(58), true);
+  assert.equal(isShortDuration(180), true);
+  assert.equal(isShortDuration(181), false);
+  assert.equal(isShortDuration(600), false);
+  assert.equal(isShortDuration(0), false);
+});
+
+// --- orderCommentTargets --------------------------------------------------------
+
+test('orders Shorts before long videos, stable within each group', () => {
+  const targets = [
+    { id: 'long1', isShort: false },
+    { id: 'short1', isShort: true },
+    { id: 'long2', isShort: false },
+    { id: 'short2', isShort: true },
+  ];
+  assert.deepEqual(
+    orderCommentTargets(targets).map((t) => t.id),
+    ['short1', 'short2', 'long1', 'long2'],
+  );
+});
+
+test('orderCommentTargets is a no-op ordering when all one type', () => {
+  const shorts = [{ id: 'a', isShort: true }, { id: 'b', isShort: true }];
+  assert.deepEqual(orderCommentTargets(shorts).map((t) => t.id), ['a', 'b']);
 });
 
 // --- channelAlreadyCommented (live dedupe guard) ---------------------------------

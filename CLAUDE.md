@@ -195,6 +195,15 @@ video, fully separate from `daily.yml`.
    This is a safety net, NOT a strategy — a real on-subject clip always wins; the
    goal is that a bad slot degrades to a clean designed card, never off-topic
    scenery.
+   **Observability (`src/brollStats.ts`).** Every b-roll safety net above
+   (vision-drop, Commons/Unsplash fill, hero-segment reuse, cross-section
+   backfill, explainer cards, rest stills) bumps a run-scoped counter, and
+   `pipeline.ts` logs a one-line `B-roll fallbacks: …` tally at the end of step
+   3. It is pure telemetry (never changes which clip ships), so use the Actions
+   log to see which nets actually earn their keep before adding another — a net
+   that never fires over weeks is a removal candidate, and one that fires
+   constantly is an upstream unfilmable-subject smell (fix at the topic gate, not
+   downstream). Pure parts unit-tested in `test/brollStats.test.ts`.
 4. **Length is mandatory.** Scripts target ~`TARGET_MINUTES` (9.5–10 min) so the
    final cut clears 8:00 for YouTube mid-roll ads. There's a word-count floor in
    the script prompt; don't lower it.
@@ -230,7 +239,18 @@ uploads (env-gated, non-fatal, skipped on DRY_RUN via the early return):
 `autoCommentOnRecentVideos` (`src/engage.ts`, `ENABLE_AUTO_COMMENT`) posts one
 reply-bait engagement comment under each recently-public video that lacks ours
 (the comment asks ONE effortless binary/"guess-before-you-look" question —
-those pull far more replies than open-ended ones). Comments can't be posted on
+those pull far more replies than open-ended ones). **Shorts-first + link-free
+(subs directive 2026-08-26):** the pass already covers Shorts (the uploads
+playlist includes them), but the analytics showed Shorts averaging ~0.3
+comments — the blind newest-first order let same-day long uploads eat the
+`AUTO_COMMENT_MAX_PER_RUN` (3) slots. Targets are now classified by duration
+(`parseIsoDurationSec`/`isShortDuration`, ≤180s = Short) and **Shorts are
+seeded first** (`orderCommentTargets`, pure/unit-tested) since Shorts are the
+reach/subscriber engine. A Short's comment is also now **pure reply-bait with
+NO funnel link**: the link diluted reply intent and pushed the near-dead
+Short→long funnel (~0.26%); the description's own `▶ Full video:` line is
+untouched, so the funnel link itself isn't removed. Long-video comments keep
+the (currently unused) funnel-append path. Comments can't be posted on
 private/scheduled videos, and today's upload only goes public at 19:00/21:00 UTC
 (hours after the 13:00 UTC run), so the pipeline itself only ever comments on
 EARLIER runs' videos. To stop today's Short waiting ~2 days for the next
@@ -398,6 +418,25 @@ silently resets every run.
   invariant #1 holds (it only reshapes which TRUE narration moment leads). This
   REINFORCES, does not fight, the self-contained rule below: phenomenon/question
   up front, mechanism + full resolution in the body.
+  **High-stakes drama, not mere visibility (data directive 2026-08-26).** A
+  120-day pull of all ~80 published Shorts (the `shorts-hook-report.yml` output)
+  showed that VISIBLE-but-low-stakes openers still flop 3-5x (a click beetle
+  "snapping faster than muscle", a garden spider "building a perfect web", a
+  tree's longevity), while every top performer carried real DRAMA in one of five
+  categories: predation/hunting, threat/defense/escape, deception/mimicry, a
+  hidden weapon or a sense we don't have, or an "impossible body" that forces a
+  "how?". So visibility is necessary but not sufficient — the winning lever is
+  STAKES. Two prompt-only edits push both the topic choice and the hook toward
+  those categories and explicitly DEMOTE the proven losers (longevity, seasonal
+  timing / life-cycle stages, kinship / social rank, slow growth, pure abstract
+  mechanism): the topic-candidate proposer's HIGH-STAKES DRAMA hard rule
+  (`topicResearch.ts`) and a stakes clause on the `LEAD WITH THE PHENOMENON` rule
+  (`scriptGen.ts`). Invariant #1 holds — both only reshape WHICH true angle/moment
+  leads; a hook may never invent stakes the episode doesn't deliver. This is the
+  north-star lever while the channel optimizes for **subscribers via Shorts** (the
+  Short→long funnel converts only ~0.26%, so long-form reach is deprioritized
+  until it's the focus): reach drives subs, and subject/angle drama drives reach
+  far more than hook wording does.
   **Facet-collision + history-hook follow-up (user directive 2026-07-06):** the
   7/3 sundew episode exposed two hook-level gaps, both fixed prompt-only in
   `scriptGen.ts`. (a) The `DIFFERENT FACETS` rule only compared sections 3 and 5's

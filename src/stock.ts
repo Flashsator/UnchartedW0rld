@@ -17,6 +17,7 @@ import {
   WORK_DIR,
 } from './config.js';
 import { visionRejectsClip } from './brollVision.js';
+import { bumpBrollStat } from './brollStats.js';
 import type { BrollClip, ImageCredit, MusicCredit } from './types.js';
 import {
   downloadFile,
@@ -857,6 +858,7 @@ async function downloadVideoClips(
         if (await visionRejectsClip(dest, dur, query)) {
           fs.unlinkSync(dest);
           usedUrls.add(url); // proven off-subject — don't re-pick it elsewhere
+          bumpBrollStat('visionDrop');
           continue;
         }
         qaState.passed = true;
@@ -943,6 +945,7 @@ async function fetchClipsForQuery(
         usedUrls.add(url);
         commonsCredits?.push(credit);
         clips.push(clip);
+        bumpBrollStat('commonsFill');
         log(`B-roll gap filled with Wikimedia Commons still for "${variant}" (${credit.license})`);
       }
     }
@@ -962,6 +965,7 @@ async function fetchClipsForQuery(
         usedUrls.add(photoUrl);
         sourcesUsed?.add('Unsplash');
         clips.push(clip);
+        bumpBrollStat('unsplashFill');
         log(`B-roll gap filled with Unsplash Ken Burns still for "${variant}"`);
       }
     }
@@ -1190,7 +1194,11 @@ async function assembleHeroReuseShots(
     // a second time, which would show two identical opening shots back to back.
     // The distinct clips are always kept, and computeCutTimes re-spreads the
     // section over the returned clip count, so a shorter list stays consistent.
-    if (!seg) continue;
+    if (!seg) {
+      bumpBrollStat('heroSegmentDropped');
+      continue;
+    }
+    bumpBrollStat('heroSegment');
     shots.push(seg);
   }
   return shots;
