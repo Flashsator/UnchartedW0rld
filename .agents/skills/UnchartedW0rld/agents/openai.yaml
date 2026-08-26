@@ -1,0 +1,6 @@
+interface:
+  display_name: "UnchartedW0rld"
+  short_description: "Repo-specific patterns and workflows for UnchartedW0rld"
+  default_prompt: "Use the UnchartedW0rld repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true
