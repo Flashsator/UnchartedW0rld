@@ -1,4 +1,4 @@
-import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from 'remotion';
+import { AbsoluteFill, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig } from 'remotion';
 import type { BrollCard } from '../../src/types';
 import { collectCardIcons } from '../../src/iconDict';
 import { animatedStatText } from '../lib/countUp';
@@ -454,10 +454,90 @@ function CardBackdrop({ accent, t }: { accent: string; t: number }) {
   );
 }
 
+// When the card carries a vision-QA'd AI illustration (ENABLE_BROLL_AI_ART), it
+// renders as the full-frame background under a legibility scrim, with the SAME
+// verbatim caption + clause on top — so invariant #1 holds (the illustration is
+// decorative; the words are still the section's own narration). Falls back to the
+// schematic layouts below whenever illustrationPath is unset.
+function IllustratedCard({ spec }: { spec: BrollCard }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const t = frame / fps;
+  const accent = spec.accent || DEFAULT_ACCENT;
+  const raw = spec.illustrationPath!;
+  const src = raw.startsWith('http') ? raw : staticFile(raw);
+  const imgFade = interpolate(t, [0, 0.5], [0, 1], CLAMP);
+  const zoom = interpolate(t, [0, 6], [1.0, 1.06], CLAMP); // slow Ken Burns so a long hold isn't frozen
+  const textFade = interpolate(t, [0.35, 0.9], [0, 1], CLAMP);
+  const lift = interpolate(t, [0.35, 0.95], [18, 0], CLAMP);
+  const isStat = spec.kind === 'stat';
+  const countProgress = interpolate(t, [0.4, 1.3], [0, 1], CLAMP);
+  return (
+    <AbsoluteFill style={{ backgroundColor: '#060809' }}>
+      <AbsoluteFill style={{ opacity: imgFade }}>
+        <Img
+          src={src}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', transform: `scale(${zoom})` }}
+        />
+      </AbsoluteFill>
+      {/* Legibility scrim: darken the lower half where the text sits. */}
+      <AbsoluteFill
+        style={{
+          background:
+            'linear-gradient(to top, rgba(6,8,9,0.94) 0%, rgba(6,8,9,0.74) 34%, rgba(6,8,9,0) 64%)',
+        }}
+      />
+      <AbsoluteFill style={{ justifyContent: 'flex-end', alignItems: 'center', padding: '0 140px 96px' }}>
+        <div
+          style={{
+            opacity: textFade,
+            transform: `translateY(${lift}px)`,
+            width: '100%',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+          }}
+        >
+          <Kicker label={spec.caption ?? ''} accent={accent} t={t} />
+          {isStat ? (
+            <div
+              style={{
+                fontFamily: FONT,
+                fontWeight: 800,
+                fontSize: 200,
+                lineHeight: 0.95,
+                color: '#FFFFFF',
+                letterSpacing: '-0.02em',
+                fontVariantNumeric: 'tabular-nums',
+                marginTop: 16,
+              }}
+            >
+              {animatedStatText(spec.headline, countProgress)}
+            </div>
+          ) : (
+            <div style={{ maxWidth: 1500, marginTop: 20 }}>
+              <WordCascade
+                text={spec.headline}
+                t={t}
+                fontSize={factSize(spec.headline, true)}
+                accent={accent}
+                align="center"
+                startAt={0.4}
+              />
+            </div>
+          )}
+        </div>
+      </AbsoluteFill>
+    </AbsoluteFill>
+  );
+}
+
 export function FactCard({ spec }: { spec: BrollCard }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const t = frame / fps;
+
+  if (spec.illustrationPath) return <IllustratedCard spec={spec} />;
 
   const accent = spec.accent || DEFAULT_ACCENT;
   const fade = interpolate(t, [0, 0.4], [0, 1], CLAMP);

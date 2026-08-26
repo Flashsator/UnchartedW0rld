@@ -1,9 +1,6 @@
-import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
 import {
-  CLOUDFLARE_ACCOUNT_ID,
-  CLOUDFLARE_API_TOKEN,
   THUMB_H,
   THUMB_W,
   UNSPLASH_ACCESS_KEY,
@@ -12,6 +9,7 @@ import {
 } from './config.js';
 import { runClaudeCli } from './scriptGen.js';
 import { searchUnsplash } from './stock.js';
+import { generateFluxImage, softenForModeration } from './flux.js';
 import { downloadFile, ensureDir, log } from './utils.js';
 
 // Derive the visual subject from the episode title so the background image is
@@ -25,36 +23,8 @@ function titleToSubject(title: string): string {
     .trim();
 }
 
-// FLUX runs a safety classifier on the GENERATED image (error code 3030,
-// "Your output has been flagged"). Violence/threat-leaning wording in the
-// subject — predator, hunts, kill, prey, dark — steers the model toward
-// aggressive/teeth/blood compositions that the classifier then rejects, even
-// with "no gore, no blood" appended. Soften those words BEFORE sending to FLUX
-// so the generation reliably passes. Applied to the model prompt only; the
-// Unsplash fallback keeps the original wording (it has no such moderation and
-// real keywords find better stock photos).
-const MODERATION_SOFTEN: ReadonlyArray<readonly [RegExp, string]> = [
-  [/\bpredators?\b/gi, 'hunter'],
-  [/\bhunts\b/gi, 'stalks'],
-  [/\bhunting\b/gi, 'stalking'],
-  [/\bhunt\b/gi, 'stalk'],
-  [/\bpreys?\b/gi, 'target'],
-  [/\bkilling\b/gi, 'catching'],
-  [/\bkiller\b/gi, 'hunter'],
-  [/\bkills\b/gi, 'catches'],
-  [/\bkill\b/gi, 'catch'],
-  [/\battacks?\b/gi, 'approach'],
-  [/\battacking\b/gi, 'approaching'],
-  [/\bcorpse\b/gi, 'remains'],
-  [/\bcarcass\b/gi, 'remains'],
-  [/\bdeadly\b/gi, 'formidable'],
-  [/\bdarkness\b/gi, 'twilight'],
-  [/\bdark\b/gi, 'low-light'],
-];
-
-function softenForModeration(prompt: string): string {
-  return MODERATION_SOFTEN.reduce((s, [re, to]) => s.replace(re, to), prompt);
-}
+// FLUX generation + moderation-softening now live in ./flux.js (shared with the
+// b-roll illustration fallback). softenForModeration is imported above.
 
 function escapeXml(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
@@ -338,42 +308,11 @@ function unsplashQueries(subject: string): string[] {
   return [...new Set(queries)].filter(Boolean);
 }
 
-// Primary thumbnail background: Cloudflare Workers AI FLUX.2 [klein] 9B. This
-// replaces the anonymous Pollinations flux endpoint (now 402). The model takes
-// multipart form fields and returns the image as a base64 string in JSON.
-// Returns true if an image was generated and written to bgPath.
-const FLUX_MODEL = '@cf/black-forest-labs/flux-2-klein-9b';
-const FLUX_STEPS = Number(process.env.FLUX_STEPS ?? 20);
-
+// Primary thumbnail background: Cloudflare Workers AI FLUX.2 [klein] 9B (shared
+// generator in ./flux.js). Returns true if an image was generated and written
+// to bgPath.
 async function fetchFluxBackground(prompt: string, bgPath: string): Promise<boolean> {
-  if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) return false;
-  const url = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/${FLUX_MODEL}`;
-  try {
-    const form = new FormData();
-    form.append('prompt', prompt);
-    form.append('width', String(THUMB_W));
-    form.append('height', String(THUMB_H));
-    form.append('steps', String(FLUX_STEPS));
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}` },
-      body: form,
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => '');
-      throw new Error(`HTTP ${res.status}: ${body.slice(0, 200)}`);
-    }
-    const data = (await res.json()) as { result?: { image?: string } };
-    const b64 = data.result?.image;
-    if (!b64) throw new Error('response had no image field');
-    ensureDir(path.dirname(bgPath));
-    fs.writeFileSync(bgPath, Buffer.from(b64, 'base64'));
-    log('Thumbnail: FLUX.2 [klein] 9B background generated');
-    return true;
-  } catch (e) {
-    log(`Thumbnail: FLUX generation failed (${(e as Error).message})`);
-    return false;
-  }
+  return generateFluxImage(prompt, bgPath, THUMB_W, THUMB_H, undefined, 'Thumbnail');
 }
 
 // Vision QA on the generated background. Diffusion output occasionally ships a

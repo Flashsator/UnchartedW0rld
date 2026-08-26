@@ -195,9 +195,32 @@ video, fully separate from `daily.yml`.
    This is a safety net, NOT a strategy — a real on-subject clip always wins; the
    goal is that a bad slot degrades to a clean designed card, never off-topic
    scenery.
+   **AI illustration background for cards (`ENABLE_BROLL_AI_ART`, OFF by default,
+   long-form only).** An explainer card that is ALREADY going to render (a slot
+   `planShotCards` proved off-subject) MAY get a stylized, non-photoreal AI
+   illustration as its full-frame BACKGROUND instead of the geometric schematic
+   (`generateCardIllustration` in `src/brollArt.ts`, rendered by `IllustratedCard`
+   in `FactCard.tsx`). It **never replaces real footage** — it only upgrades a
+   card that was going to show anyway, and it sits BELOW every real-footage net in
+   priority. Two trust guards are load-bearing and must stay: the FLUX prompt
+   forces a clearly-illustrated, NON-photoreal look (so it can't masquerade as
+   real footage on a science channel — the reason we don't AI-generate photoreal
+   creatures), and a **vision-QA gate** (`passesArtQa`) DROPS any illustration
+   with an anatomical error or that reads as a photo — and, unlike the thumbnail
+   QA, a QA-*unavailable* result also drops (the schematic card is a clean
+   invariant-safe fallback, so an unverified illustration never ships). **Invariant
+   #1 holds:** the card's on-screen text stays verbatim narration (the illustration
+   is decorative background asserting no number/claim), and the prompt bans
+   rendered text/numbers. Hard per-EPISODE cap (`BROLL_AI_ART_MAX_PER_EPISODE`,
+   default 2 — FLUX free-tier quota is largely spent on the thumbnail; generation
+   reuses the shared `src/flux.ts` extracted from `thumbnail.ts`). Fetch-time only,
+   no new state file; bumps the `cardIllustration` brollStats counter. This is a
+   last-resort upgrade, NOT a strategy — measure `brollStats` (how often cards even
+   fire) before enabling it. Pure parts unit-tested in `test/brollArt.test.ts`.
    **Observability (`src/brollStats.ts`).** Every b-roll safety net above
    (vision-drop, Commons/Unsplash fill, hero-segment reuse, cross-section
-   backfill, explainer cards, rest stills) bumps a run-scoped counter, and
+   backfill, explainer cards, card AI illustrations, rest stills) bumps a
+   run-scoped counter, and
    `pipeline.ts` logs a one-line `B-roll fallbacks: …` tally at the end of step
    3. It is pure telemetry (never changes which clip ships), so use the Actions
    log to see which nets actually earn their keep before adding another — a net
@@ -640,7 +663,10 @@ silently resets every run.
   `ENABLE_SHORTS_ARC_QA` (LLM judge that verifies + corrects each Short's
   self-contained tease→answer arc marker, gating only the judge — the
   deterministic word-budget overflow regen runs always; see the
-  Self-contained-arc ENFORCEMENT note above).
+  Self-contained-arc ENFORCEMENT note above). One gate is OFF EVERYWHERE for now
+  (NOT yet in `daily.yml` — measure `brollStats` first): `ENABLE_BROLL_AI_ART`
+  (stylized AI illustration background for explainer cards, invariant #3; tune
+  with `BROLL_AI_ART_MAX_PER_EPISODE`; see the card AI-illustration note above).
 
 ## Conventions
 

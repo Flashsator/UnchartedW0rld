@@ -125,6 +125,11 @@ export type BrollCard = {
   caption?: string;
   // Series accent hex (optional; defaults to the brand yellow).
   accent?: string;
+  // Optional relative asset path to a vision-QA'd stylized AI illustration used
+  // as the card's full-frame background (ENABLE_BROLL_AI_ART). When absent the
+  // card renders its geometric schematic instead. The on-screen text stays
+  // verbatim narration either way, so the illustration is decorative only.
+  illustrationPath?: string;
 };
 
 export type SubtitleCue = {
