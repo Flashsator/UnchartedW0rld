@@ -307,6 +307,14 @@ export const ENABLE_SHORTS_STILL_INTRO = process.env.ENABLE_SHORTS_STILL_INTRO =
 // a brief ~10-20s intro, not the whole Short. Converted to a shot count against
 // SHORTS_CLIP_SEC, always leaving at least one footage slot.
 export const SHORTS_STILL_INTRO_SEC = Number(process.env.SHORTS_STILL_INTRO_SEC ?? 15);
+// Which series the still intro applies to (comma-separated series keys) — lets it
+// run as a clean A/B on one series while the others stay all-footage. Defaults to
+// the plants series (Friday), the weakest performer with the most room to test.
+// An empty value means "all series" (when the gate is on).
+export const SHORTS_STILL_INTRO_SERIES = (process.env.SHORTS_STILL_INTRO_SERIES ?? 'plants')
+  .split(',')
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean);
 
 // Background-music level (0–1) mixed under the narration by ffmpeg (see mux.ts).
 // Applies to both long-form and shorts (shorts inherit the long-form value).

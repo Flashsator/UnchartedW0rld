@@ -12,6 +12,7 @@ import {
   PIXABAY_API_KEY,
   SHORTS_CLIP_SEC,
   SHORTS_STILL_INTRO_SEC,
+  SHORTS_STILL_INTRO_SERIES,
   UNSPLASH_ACCESS_KEY,
   VIDEO_FPS,
   VIDEO_H,
@@ -1422,6 +1423,20 @@ export function backfillSectionClips(pool: readonly BrollClip[], needed: number)
 // clips and reuses distinct segments of its first clip for the rest
 // (assembleHeroReuseShots), so a Short never flashes a different individual every
 // cut. Cuts faster than the long-form via the tighter SHORTS_CLIP_SEC quota.
+// Whether the still-intro experiment applies to this run: the master gate is on
+// AND (no series restriction, or this series is in the allow-list). Lets the
+// intro run as a clean A/B on one series (e.g. plants) while the others stay
+// all-footage. Pure/exported for testing.
+export function shortsStillIntroApplies(
+  enabled: boolean,
+  seriesKey: string | undefined,
+  allowedSeries: readonly string[],
+): boolean {
+  if (!enabled) return false;
+  if (allowedSeries.length === 0) return true;
+  return !!seriesKey && allowedSeries.includes(seriesKey.trim().toLowerCase());
+}
+
 // How many of a Short's `needed` shot slots the still carousel takes: enough to
 // cover roughly the first `introSec` seconds (a brief intro, NOT the whole
 // Short), converted against the per-shot seconds `clipSec`. Always at least 1 and
@@ -1490,6 +1505,7 @@ export async function fetchShortsBroll(
   usedUrls: Set<string>,
   pixabayCategory?: string,
   subject?: string,
+  seriesKey?: string,
 ): Promise<BrollClip[]> {
   const cacheDir = ensureDir(path.join(workDir, 'broll'));
   const queries = beats.map((b) => b.trim()).filter(Boolean);
@@ -1509,7 +1525,7 @@ export async function fetchShortsBroll(
   // on-subject visuals through the swipe/early-retention window, then hands off to
   // motion. Best-effort with two-way fallback: a still shortfall is covered by
   // footage, and if nothing assembles we fall through to the plain footage path.
-  if (ENABLE_SHORTS_STILL_INTRO && subject?.trim()) {
+  if (shortsStillIntroApplies(ENABLE_SHORTS_STILL_INTRO, seriesKey, SHORTS_STILL_INTRO_SERIES) && subject?.trim()) {
     const frontCount = shortsStillIntroCount(needed, SHORTS_STILL_INTRO_SEC, SHORTS_CLIP_SEC);
     const stills = await fetchShortsStillIntro(subject, frontCount, cacheDir, usedUrls);
     const backNeeded = Math.max(1, needed - stills.length);

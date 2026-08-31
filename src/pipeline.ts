@@ -523,7 +523,7 @@ async function main(): Promise<void> {
 
   if (DRY_RUN) {
     log(`DRY_RUN=1 — skipping YouTube upload. Final: ${finalVideo}`);
-    await runShortsPipeline(manifest, episode, series.categoryId, runDir, today, null, bgmCreditLine, used, pixabayCategory);
+    await runShortsPipeline(manifest, episode, series.categoryId, runDir, today, null, bgmCreditLine, used, pixabayCategory, series.key);
     return;
   }
 
@@ -571,7 +571,7 @@ async function main(): Promise<void> {
   await addToSeriesPlaylist(videoId, series.name, series.theme);
   await uploadCaption(videoId, path.join(runDir, 'captions.srt'));
 
-  await runShortsPipeline(manifest, episode, series.categoryId, runDir, today, videoId, bgmCreditLine, used, pixabayCategory);
+  await runShortsPipeline(manifest, episode, series.categoryId, runDir, today, videoId, bgmCreditLine, used, pixabayCategory, series.key);
 
   // End-of-run housekeeping over PAST uploads (each opt-in via its env flag and
   // fully non-fatal): seed one engagement comment under each recently-public
@@ -595,6 +595,7 @@ async function runShortsPipeline(
   musicCredit: string,
   usedUrls: Set<string>,
   pixabayCategory?: string,
+  seriesKey?: string,
 ): Promise<void> {
   const utcDay = new Date().getUTCDay();
   const plan = planShortsForToday(utcDay);
@@ -630,6 +631,7 @@ async function runShortsPipeline(
         usedUrls,
         pixabayCategory,
         episode.subject,
+        seriesKey,
       );
       portraitPaths = portrait.map((c) => relAsset(runDir, c.path));
     } catch (e) {
