@@ -98,6 +98,23 @@ video, fully separate from `daily.yml`.
    (`buildAttribution` in `src/attribution.ts`, fed by the `imageCredits`
    collector in `pipeline.ts`). For common subjects the providers already fill
    the quota, so this never fires.
+   **iNaturalist species-accurate stills (`searchINaturalist`/`parseINaturalistResults`
+   in `src/stock.ts`).** A second keyless still gap-fill, tried between Commons
+   and Unsplash. iNat research-grade observations are community-ID'd to the
+   species, so it is searched by the episode **subject** (the creature, via
+   `taxon_name`) rather than the beat query, returning a REAL photo of the exact
+   animal/plant — the best free on-subject coverage for uncommon subjects, and it
+   Ken-Burns'es through the same still path (so Shorts get it too). Same two
+   guards as Commons: **permissive licenses only** (API `photo_license=cc0,cc-by`
+   AND `isPermissiveLicense`, with iNat's hyphen codes normalized by
+   `normalizeINatLicense` so `cc-by` matches), and per-image attribution. One
+   extra rule is load-bearing: CC-BY legally needs a credit, and the **Shorts**
+   fetch path threads NO credit channel (`fetchShortsBroll` passes
+   `commonsCredits` undefined), so a CC-BY iNat photo is accepted ONLY when that
+   channel exists (long-form); on Shorts only **CC0 / public-domain** iNat photos
+   are used (`licenseNeedsAttribution` gate), so a used photo is never left
+   unattributed. Bumps the `inaturalistFill` brollStats counter. Pure parsing
+   unit-tested in `test/stock.test.ts`.
    **Relevance beats resolution (user directive 2026-06-11).** Candidate clips
    are filtered/ranked by per-clip provider metadata against the beat query
    (`filterAndRankByRelevance` in `src/stock.ts`); resolution NEVER excludes a
@@ -218,9 +235,9 @@ video, fully separate from `daily.yml`.
    last-resort upgrade, NOT a strategy — measure `brollStats` (how often cards even
    fire) before enabling it. Pure parts unit-tested in `test/brollArt.test.ts`.
    **Observability (`src/brollStats.ts`).** Every b-roll safety net above
-   (vision-drop, Commons/Unsplash fill, hero-segment reuse, cross-section
-   backfill, explainer cards, card AI illustrations, rest stills) bumps a
-   run-scoped counter, and
+   (vision-drop, Commons/iNaturalist/Unsplash fill, hero-segment reuse,
+   cross-section backfill, explainer cards, card AI illustrations, rest stills)
+   bumps a run-scoped counter, and
    `pipeline.ts` logs a one-line `B-roll fallbacks: …` tally at the end of step
    3. It is pure telemetry (never changes which clip ships), so use the Actions
    log to see which nets actually earn their keep before adding another — a net
