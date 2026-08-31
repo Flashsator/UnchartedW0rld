@@ -293,17 +293,20 @@ export const SHORTS_CLIP_SEC = 4.0;
 export const BROLL_MIN_HEIGHT = 1080;
 
 // --- Shorts still-intro experiment (opt-in) -----------------------------------
-// When ENABLE_SHORTS_STILL_INTRO=1, a Short's FRONT half is built from a carousel
-// of species-accurate PORTRAIT stills (iNaturalist CC0 / Commons CC0 / Unsplash,
-// Ken-Burns'd) instead of stock footage, and its BACK half stays real footage.
-// The intent: guarantee on-subject, species-accurate visuals in the critical
-// swipe/early-retention window, then hand off to real motion. Attribution-free
-// (CC0/Unsplash) only, because the Shorts fetch path carries no credit channel.
-// Default OFF — this is an EXPERIMENT to A/B (stills can read as a slideshow, and
-// the data says visuals aren't the Shorts reach bottleneck); long-form untouched.
+// When ENABLE_SHORTS_STILL_INTRO=1, a Short's FIRST ~SHORTS_STILL_INTRO_SEC are
+// built from a carousel of species-accurate PORTRAIT stills (iNaturalist CC0 /
+// Commons CC0 / Unsplash, Ken-Burns'd) instead of stock footage, and the REST
+// stays real footage. The intent: guarantee on-subject, species-accurate visuals
+// in the critical swipe/early-retention window (a short intro, NOT the whole
+// Short), then hand off to real motion. Attribution-free (CC0/Unsplash) only,
+// because the Shorts fetch path carries no credit channel. Default OFF — this is
+// an EXPERIMENT to A/B (stills can read as a slideshow, and the data says visuals
+// aren't the Shorts reach bottleneck); long-form untouched.
 export const ENABLE_SHORTS_STILL_INTRO = process.env.ENABLE_SHORTS_STILL_INTRO === '1';
-// Fraction of a Short's shot slots given to the still carousel (rest = footage).
-export const SHORTS_STILL_INTRO_RATIO = Number(process.env.SHORTS_STILL_INTRO_RATIO ?? 0.5);
+// Seconds at the START of a Short given to the still carousel (rest = footage) —
+// a brief ~10-20s intro, not the whole Short. Converted to a shot count against
+// SHORTS_CLIP_SEC, always leaving at least one footage slot.
+export const SHORTS_STILL_INTRO_SEC = Number(process.env.SHORTS_STILL_INTRO_SEC ?? 15);
 
 // Background-music level (0–1) mixed under the narration by ffmpeg (see mux.ts).
 // Applies to both long-form and shorts (shorts inherit the long-form value).

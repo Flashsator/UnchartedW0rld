@@ -29,20 +29,22 @@ import type { BrollClip } from '../src/types.js';
 
 // --- shortsStillIntroCount -----------------------------------------------------
 
-test('shortsStillIntroCount splits ~half to stills, always leaving footage', () => {
-  assert.equal(shortsStillIntroCount(8, 0.5), 4);
-  assert.equal(shortsStillIntroCount(10, 0.5), 5);
-  assert.equal(shortsStillIntroCount(2, 0.5), 1);
+test('shortsStillIntroCount covers ~the first introSec seconds, not the whole Short', () => {
+  // 15s intro at 4s/shot ≈ 4 still slots; a ~55s / 4s Short has ~14 slots.
+  assert.equal(shortsStillIntroCount(14, 15, 4), 4);
+  assert.equal(shortsStillIntroCount(14, 20, 4), 5);
+  assert.equal(shortsStillIntroCount(14, 10, 4), 3);
 });
 
 test('shortsStillIntroCount never takes every slot and never zero-below-2', () => {
-  assert.equal(shortsStillIntroCount(1, 0.5), 0); // too few slots to split
-  assert.equal(shortsStillIntroCount(10, 2), 9); // ratio clamps; back half keeps >=1
-  assert.equal(shortsStillIntroCount(6, 0), 1); // floor of 1 still when enabled
+  assert.equal(shortsStillIntroCount(1, 15, 4), 0); // too few slots to split
+  assert.equal(shortsStillIntroCount(3, 100, 4), 2); // huge intro clamps, back keeps >=1
+  assert.equal(shortsStillIntroCount(6, 1, 4), 1); // floor of 1 still when enabled
 });
 
-test('shortsStillIntroCount tolerates a NaN ratio (defaults to half)', () => {
-  assert.equal(shortsStillIntroCount(8, Number.NaN), 4);
+test('shortsStillIntroCount tolerates bad inputs (defaults)', () => {
+  assert.equal(shortsStillIntroCount(14, Number.NaN, 4), 4); // introSec defaults to 15
+  assert.equal(shortsStillIntroCount(14, 16, 0), 4); // clipSec defaults to SHORTS_CLIP_SEC (4)
 });
 
 // --- iNaturalist parsing -------------------------------------------------------

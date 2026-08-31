@@ -557,14 +557,15 @@ silently resets every run.
   found) inherits the faster cadence by center-cropping the relevant long-section
   clips, which stays on-subject. Don't relax the floor to chase the quota.
 - **Shorts still-intro experiment (`ENABLE_SHORTS_STILL_INTRO`, OFF by default):**
-  builds a Short's FRONT half from a carousel of species-accurate PORTRAIT stills
+  builds a Short's first ~`SHORTS_STILL_INTRO_SEC` (default **15s**, a brief
+  intro — NOT the whole Short) from a carousel of species-accurate PORTRAIT stills
   (`fetchShortsStillIntro` in `src/stock.ts`: iNaturalist CC0 / Commons CC0 /
   Unsplash, multiple distinct stills, each Ken-Burns'd via the now
-  dimension-parametrized `makeKenBurnsClip` at 1080×1920) and keeps the BACK half
-  real footage — the split is the pure, unit-tested `shortsStillIntroCount`
-  (`SHORTS_STILL_INTRO_RATIO`, default 0.5; always leaves ≥1 footage slot). The
-  intent is to guarantee on-subject, species-accurate visuals through the
-  swipe/early-retention window, then hand off to motion. **Attribution-free
+  dimension-parametrized `makeKenBurnsClip` at 1080×1920) and keeps the REST real
+  footage — the split is the pure, unit-tested `shortsStillIntroCount` (intro
+  seconds ÷ `SHORTS_CLIP_SEC`, always leaving ≥1 footage slot). The intent is to
+  guarantee on-subject, species-accurate visuals through the swipe/early-retention
+  window, then hand off to motion. **Attribution-free
   sources only** (CC0/Unsplash) because the Shorts fetch path threads no credit
   channel (`fetchShortsBroll` passes `commonsCredits` undefined). Best-effort with
   two-way fallback: a still shortfall is covered by footage, and if nothing
@@ -702,8 +703,8 @@ silently resets every run.
   (NOT yet in `daily.yml` — measure `brollStats` first): `ENABLE_BROLL_AI_ART`
   (stylized AI illustration background for explainer cards, invariant #3; tune
   with `BROLL_AI_ART_MAX_PER_EPISODE`; see the card AI-illustration note above).
-  Also OFF everywhere: `ENABLE_SHORTS_STILL_INTRO` (front-half species-still
-  carousel for Shorts, an A/B experiment; tune with `SHORTS_STILL_INTRO_RATIO`;
+  Also OFF everywhere: `ENABLE_SHORTS_STILL_INTRO` (brief ~15s species-still
+  carousel intro for Shorts, an A/B experiment; tune with `SHORTS_STILL_INTRO_SEC`;
   see the Shorts still-intro note above).
 
 ## Conventions

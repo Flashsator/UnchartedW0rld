@@ -11,7 +11,7 @@ import {
   PEXELS_API_KEY,
   PIXABAY_API_KEY,
   SHORTS_CLIP_SEC,
-  SHORTS_STILL_INTRO_RATIO,
+  SHORTS_STILL_INTRO_SEC,
   UNSPLASH_ACCESS_KEY,
   VIDEO_FPS,
   VIDEO_H,
@@ -1422,13 +1422,17 @@ export function backfillSectionClips(pool: readonly BrollClip[], needed: number)
 // clips and reuses distinct segments of its first clip for the rest
 // (assembleHeroReuseShots), so a Short never flashes a different individual every
 // cut. Cuts faster than the long-form via the tighter SHORTS_CLIP_SEC quota.
-// How many of a Short's `needed` shot slots the still carousel takes (the rest
-// stay footage). At least 1, never all of them (the back half is always footage),
-// and never more slots than exist. Pure/exported for testing.
-export function shortsStillIntroCount(needed: number, ratio: number): number {
+// How many of a Short's `needed` shot slots the still carousel takes: enough to
+// cover roughly the first `introSec` seconds (a brief intro, NOT the whole
+// Short), converted against the per-shot seconds `clipSec`. Always at least 1 and
+// never all of them (the rest stays footage), and never more slots than exist.
+// Pure/exported for testing.
+export function shortsStillIntroCount(needed: number, introSec: number, clipSec: number): number {
   if (needed <= 1) return 0;
-  const r = Number.isFinite(ratio) ? Math.min(Math.max(ratio, 0), 0.9) : 0.5;
-  return Math.min(needed - 1, Math.max(1, Math.round(needed * r)));
+  const per = Number.isFinite(clipSec) && clipSec > 0 ? clipSec : SHORTS_CLIP_SEC;
+  const sec = Number.isFinite(introSec) && introSec > 0 ? introSec : 15;
+  const slots = Math.round(sec / per);
+  return Math.min(needed - 1, Math.max(1, slots));
 }
 
 // Front-half still carousel for a Short: up to `count` DISTINCT portrait Ken
@@ -1500,13 +1504,13 @@ export async function fetchShortsBroll(
   const opts: BrollFetchOpts = { orientation: 'portrait', pixabayCategory, subject };
   const needed = Math.max(1, Math.ceil(narrationSec / SHORTS_CLIP_SEC));
 
-  // EXPERIMENT (ENABLE_SHORTS_STILL_INTRO, OFF by default): front half = a
-  // species-accurate still carousel, back half = real footage. Guarantees
+  // EXPERIMENT (ENABLE_SHORTS_STILL_INTRO, OFF by default): a brief ~intro of a
+  // species-accurate still carousel, then real footage for the rest. Guarantees
   // on-subject visuals through the swipe/early-retention window, then hands off to
   // motion. Best-effort with two-way fallback: a still shortfall is covered by
   // footage, and if nothing assembles we fall through to the plain footage path.
   if (ENABLE_SHORTS_STILL_INTRO && subject?.trim()) {
-    const frontCount = shortsStillIntroCount(needed, SHORTS_STILL_INTRO_RATIO);
+    const frontCount = shortsStillIntroCount(needed, SHORTS_STILL_INTRO_SEC, SHORTS_CLIP_SEC);
     const stills = await fetchShortsStillIntro(subject, frontCount, cacheDir, usedUrls);
     const backNeeded = Math.max(1, needed - stills.length);
     const footage = await assembleHeroReuseShots(
