@@ -212,6 +212,21 @@ jobs:
           FORCE_RUN: ${{ inputs.force && '1' || '' }}
         run: npm run run
 
+      # Save the rendered vertical Shorts as a downloadable artifact so they can
+      # be manually cross-posted (TikTok / Instagram Reels / Facebook Reels). This
+      # is the pristine render — sharper than re-downloading the Short from YouTube
+      # Studio (no YouTube re-encode). Grab it from the run's Summary page under
+      # "Artifacts". Matches out/<date>_short<k>_<title>.mp4; ignores runs with no
+      # Shorts so it never fails the job.
+      - name: Upload rendered Shorts for cross-posting
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: shorts-${{ github.run_id }}
+          path: out/*_short[0-9]*.mp4
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Upload artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v7
