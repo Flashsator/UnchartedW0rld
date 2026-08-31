@@ -19,7 +19,8 @@
 export type BrollStatKey =
   | 'visionDrop' // vision QA judged a downloaded clip clearly off-subject and dropped it
   | 'commonsFill' // a Wikimedia Commons still filled a beat the providers left short
-  | 'unsplashFill' // an Unsplash Ken Burns still filled a beat (below Commons)
+  | 'inaturalistFill' // a species-accurate iNaturalist still filled a beat (below Commons)
+  | 'unsplashFill' // an Unsplash Ken Burns still filled a beat (below iNaturalist)
   | 'heroSegment' // an extra slot was realized as a time-window cut of the beat's hero clip
   | 'heroSegmentDropped' // a hero segment couldn't be cut, so the slot was dropped (not repeated)
   | 'sectionBackfill' // a whole section came up empty and borrowed on-subject clips from others
@@ -30,6 +31,7 @@ export type BrollStatKey =
 export const BROLL_STAT_KEYS: BrollStatKey[] = [
   'visionDrop',
   'commonsFill',
+  'inaturalistFill',
   'unsplashFill',
   'heroSegment',
   'heroSegmentDropped',
@@ -43,6 +45,7 @@ export const BROLL_STAT_KEYS: BrollStatKey[] = [
 const STAT_LABELS: Record<BrollStatKey, string> = {
   visionDrop: 'vision-drop',
   commonsFill: 'commons',
+  inaturalistFill: 'inaturalist',
   unsplashFill: 'unsplash',
   heroSegment: 'hero-seg',
   heroSegmentDropped: 'hero-seg-dropped',
@@ -58,6 +61,7 @@ export function emptyBrollStats(): BrollStats {
   return {
     visionDrop: 0,
     commonsFill: 0,
+    inaturalistFill: 0,
     unsplashFill: 0,
     heroSegment: 0,
     heroSegmentDropped: 0,

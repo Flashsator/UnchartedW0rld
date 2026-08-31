@@ -19,8 +19,71 @@ import {
   segmentWindow,
   shotSource,
   stripHtml,
+  normalizeINatLicense,
+  iNatLicenseLabel,
+  licenseNeedsAttribution,
+  parseINaturalistResults,
 } from '../src/stock.js';
 import type { BrollClip } from '../src/types.js';
+
+// --- iNaturalist parsing -------------------------------------------------------
+
+test('normalizeINatLicense turns hyphen codes into space form so isPermissiveLicense applies', () => {
+  assert.equal(normalizeINatLicense('cc-by'), 'cc by');
+  assert.equal(normalizeINatLicense('CC-BY-NC'), 'cc by nc');
+  assert.equal(normalizeINatLicense('cc0'), 'cc0');
+  assert.equal(normalizeINatLicense(''), '');
+});
+
+test('iNatLicenseLabel renders a clean display label', () => {
+  assert.equal(iNatLicenseLabel('cc0'), 'CC0');
+  assert.equal(iNatLicenseLabel('cc-by'), 'CC BY');
+  assert.equal(iNatLicenseLabel(''), 'Unknown license');
+});
+
+test('licenseNeedsAttribution: CC0/PD free, CC BY requires credit', () => {
+  assert.equal(licenseNeedsAttribution('CC0'), false);
+  assert.equal(licenseNeedsAttribution('Public domain'), false);
+  assert.equal(licenseNeedsAttribution('CC BY'), true);
+});
+
+test('parseINaturalistResults keeps only permissive photos, upgrades URL, and credits the author', () => {
+  const resp = {
+    results: [
+      {
+        id: 111,
+        taxon: { name: 'Bubo bubo', preferred_common_name: 'Eurasian Eagle-Owl' },
+        user: { login: 'birder1', name: 'A. Birder' },
+        photos: [
+          { url: 'https://inaturalist-open-data.s3.amazonaws.com/photos/9/square.jpg', license_code: 'cc-by', original_dimensions: { width: 2048, height: 1365 } },
+        ],
+      },
+      { id: 222, user: { login: 'x' }, photos: [{ url: 'https://x/square.jpg', license_code: 'cc-by-nc' }] }, // non-commercial → dropped
+      { id: 333, user: { login: 'y' }, photos: [{ url: 'https://y/square.jpg', license_code: null }] }, // all rights reserved → dropped
+      { id: 444, taxon: { name: 'Owl sp.' }, user: { login: 'z' }, photos: [{ url: 'https://z/square.jpg', license_code: 'cc0', original_dimensions: { width: 800, height: 200 } }] }, // too short → dropped
+    ],
+  };
+  const out = parseINaturalistResults(resp, 720);
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.url, 'https://inaturalist-open-data.s3.amazonaws.com/photos/9/original.jpg');
+  assert.equal(out[0]!.credit.title, 'Eurasian Eagle-Owl');
+  assert.equal(out[0]!.credit.author, 'A. Birder');
+  assert.equal(out[0]!.credit.license, 'CC BY');
+  assert.match(out[0]!.credit.url, /observations\/111$/);
+});
+
+test('parseINaturalistResults accepts a CC0 photo with no dimensions (best-effort)', () => {
+  const resp = {
+    results: [
+      { id: 5, taxon: { name: 'Felis catus' }, user: { login: 'c' }, photos: [{ url: 'https://c/square.jpeg', license_code: 'cc0' }] },
+    ],
+  };
+  const out = parseINaturalistResults(resp, 720);
+  assert.equal(out.length, 1);
+  assert.equal(out[0]!.url, 'https://c/original.jpeg');
+  assert.equal(out[0]!.credit.license, 'CC0');
+  assert.equal(licenseNeedsAttribution(out[0]!.credit.license), false);
+});
 
 test('distributes evenly when it divides', () => {
   assert.deepEqual(allocateClipsAcrossBeats(6, 3), [2, 2, 2]);

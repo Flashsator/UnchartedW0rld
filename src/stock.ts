@@ -649,6 +649,106 @@ async function searchCommons(query: string): Promise<Array<{ url: string; credit
   }
 }
 
+// --- iNaturalist (species-accurate, keyless, permissive-licensed stills) -------
+// iNaturalist research-grade observations are community-identified to the
+// species, so a taxon_name search returns a REAL photo of the exact creature —
+// far better on-subject coverage for a science channel than a generic stock
+// fuzzy match, and free with NO API key. Same role/mechanism as the Commons
+// gap-fill (a still Ken-Burns'd into a clip), placed just before Unsplash.
+// Permissive licenses only (CC0 / public domain / plain CC BY), filtered both by
+// the API's photo_license param AND isPermissiveLicense; every CC-BY photo
+// carries its per-image attribution into the description credit block.
+
+type INatPhoto = {
+  url?: string;
+  license_code?: string | null;
+  original_dimensions?: { width?: number; height?: number } | null;
+};
+type INatObs = {
+  id?: number;
+  taxon?: { name?: string; preferred_common_name?: string | null } | null;
+  user?: { login?: string; name?: string | null } | null;
+  photos?: INatPhoto[];
+};
+type INatResp = { results?: INatObs[] };
+
+// iNaturalist reports licenses as hyphenated codes (cc0, cc-by, cc-by-nc...);
+// normalize to spaces so isPermissiveLicense (which matches "cc by") applies.
+// Pure/exported for testing.
+export function normalizeINatLicense(code: string): string {
+  return (code || '').toLowerCase().replace(/-/g, ' ').trim();
+}
+
+// Clean display label for the attribution block ("cc0" -> "CC0", "cc-by" -> "CC BY").
+export function iNatLicenseLabel(code: string): string {
+  const l = normalizeINatLicense(code);
+  if (!l) return 'Unknown license';
+  if (l === 'cc0') return 'CC0';
+  if (l.includes('public domain') || l === 'pd' || l === 'pdm') return 'Public domain';
+  return l.split(' ').map((w) => (w === 'cc' ? 'CC' : w.toUpperCase())).join(' ');
+}
+
+// A permissive license that STILL legally requires crediting the author (CC BY),
+// vs one that does not (CC0 / public domain). Used to gate CC-BY photos off any
+// surface that has no attribution channel (the Shorts path), so a used photo is
+// never left unattributed. Pure/exported for testing.
+export function licenseNeedsAttribution(license: string): boolean {
+  const l = license.toLowerCase();
+  if (l.includes('cc0') || l.includes('public domain') || l.includes('pdm') || l === 'pd') return false;
+  return true;
+}
+
+// Parses an iNaturalist /v1/observations response into permissively-licensed,
+// full-resolution photo URLs, each paired with its attribution. Pure/exported
+// for testing. One representative photo per observation (variety across
+// observers), dropping any below `minHeight` or without a permissive license.
+export function parseINaturalistResults(
+  resp: INatResp,
+  minHeight: number,
+): Array<{ url: string; credit: ImageCredit }> {
+  const out: Array<{ url: string; credit: ImageCredit }> = [];
+  for (const obs of resp.results ?? []) {
+    for (const photo of obs.photos ?? []) {
+      if (!photo?.url) continue;
+      const license = normalizeINatLicense(photo.license_code ?? '');
+      if (!isPermissiveLicense(license)) continue;
+      const dims = photo.original_dimensions;
+      if (dims && typeof dims.height === 'number' && dims.height > 0 && dims.height < minHeight) continue;
+      // iNat photo.url is the small "square" thumb; upgrade to the full original.
+      const url = photo.url.replace(/\/square\.(\w+)(\?|$)/, '/original.$1$2');
+      const taxon =
+        obs.taxon?.preferred_common_name || obs.taxon?.name || 'iNaturalist observation';
+      const author = (obs.user?.name || obs.user?.login || 'iNaturalist contributor').slice(0, 80);
+      out.push({
+        url,
+        credit: {
+          title: taxon,
+          author,
+          license: iNatLicenseLabel(photo.license_code ?? ''),
+          url: obs.id ? `https://www.inaturalist.org/observations/${obs.id}` : 'https://www.inaturalist.org',
+        },
+      });
+      break; // one photo per observation
+    }
+  }
+  return out;
+}
+
+// Species-accurate real photos of the subject, keyless. Searched by taxon name
+// (the episode subject / creature), research-grade, permissive licenses only.
+async function searchINaturalist(query: string): Promise<Array<{ url: string; credit: ImageCredit }>> {
+  const url =
+    `https://api.inaturalist.org/v1/observations?taxon_name=${encodeURIComponent(query)}` +
+    `&photo_license=cc0%2Ccc-by&quality_grade=research&photos=true&per_page=20&order_by=votes&order=desc`;
+  try {
+    const data = await fetchJson<INatResp>(url, { headers: { 'User-Agent': COMMONS_UA } });
+    return parseINaturalistResults(data, BROLL_MIN_HEIGHT);
+  } catch (e) {
+    log(`iNaturalist search failed: ${(e as Error).message}`);
+    return [];
+  }
+}
+
 // Turns a still photo into a BROLL_CLIP_SEC Ken Burns clip (slow centered
 // zoom-in) at the project resolution/fps, so it flows through the same
 // OffthreadVideo path as real footage. The large pre-upscale keeps the zoom
@@ -948,6 +1048,29 @@ async function fetchClipsForQuery(
         bumpBrollStat('commonsFill');
         log(`B-roll gap filled with Wikimedia Commons still for "${variant}" (${credit.license})`);
       }
+    }
+  }
+
+  // iNaturalist: community-ID'd REAL photos of the exact species, keyless.
+  // Searched by the episode SUBJECT (the creature) rather than the beat query,
+  // since iNat matches taxa — a real photo of the right species beats a generic
+  // Unsplash match, so it sits above Unsplash. CC-BY needs attribution, so it is
+  // accepted only when there's a credit channel (long-form, `commonsCredits`
+  // defined); on the Shorts path (no channel) only CC0 / public-domain photos are
+  // used, so a used photo is never left unattributed.
+  if (clips.length < count && opts.subject) {
+    const found = shuffle(await searchINaturalist(opts.subject)).filter((c) => !usedUrls.has(c.url));
+    for (const { url, credit } of found) {
+      if (clips.length >= count) break;
+      const needsAttr = licenseNeedsAttribution(credit.license);
+      if (needsAttr && !commonsCredits) continue;
+      const clip = await makeKenBurnsClip(url, opts.subject, cacheDir, brollSeq++);
+      if (!clip) continue;
+      usedUrls.add(url);
+      if (needsAttr) commonsCredits?.push(credit);
+      clips.push(clip);
+      bumpBrollStat('inaturalistFill');
+      log(`B-roll gap filled with iNaturalist still for "${opts.subject}" (${credit.license})`);
     }
   }
 
