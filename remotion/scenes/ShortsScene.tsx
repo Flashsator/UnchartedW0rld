@@ -16,6 +16,13 @@ function pathToSrc(p: string): string {
   return staticFile(p);
 }
 
+// The channel's consistent subscribe promise shown on every Short's end card.
+// Subscriber conversion is the weak spot (~0.25% of Short views vs a 0.5-1%
+// benchmark), and people subscribe when they know what following gets them — so
+// this is the same benefit-driven line on every Short (covers animals/insects/
+// plants, no cadence claim to keep invariant #1's no-false-claims spirit).
+const SUB_PROMISE = 'More of nature’s strangest secrets';
+
 type KenBurns = {
   scaleFrom: number;
   scaleTo: number;
@@ -133,6 +140,10 @@ export function ShortsScene({ manifest }: ShortsSceneProps) {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   });
+  // Gentle "breathing" pulse on the SUBSCRIBE pill so the eye lands on the ONE
+  // action we want in the end card (a subscribe, not the near-dead funnel link) —
+  // ±4.5% at ~0.9 Hz, starting once the card is up.
+  const subPulse = 1 + 0.045 * Math.sin(((frame - endStart) / fps) * Math.PI * 2 * 0.9);
 
   // Near-hard cut in: a Short's first frame is both its swipe-decision moment and
   // its poster still, so we don't burn ~0.3s fading up from black. 3 frames
@@ -306,32 +317,38 @@ export function ShortsScene({ manifest }: ShortsSceneProps) {
               alignItems: 'center',
             }}
           >
+            {/* The channel PROMISE — the reason to subscribe. Kept consistent
+                across every Short so a viewer learns what following gets them.
+                Benefit-driven and cadence-agnostic (no false "daily" claim). */}
             <div
               style={{
                 color: '#fff',
                 fontWeight: 800,
-                fontSize: 64,
-                lineHeight: 1.1,
+                fontSize: 60,
+                lineHeight: 1.08,
                 letterSpacing: '-0.01em',
-                marginBottom: 48,
+                marginBottom: 44,
+                maxWidth: 920,
                 textShadow: '0 2px 14px rgba(0,0,0,0.9)',
               }}
             >
-              Watch the full video
+              {SUB_PROMISE}
             </div>
+            {/* The ONE action: a dominant, gently pulsing SUBSCRIBE pill. */}
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 22,
+                gap: 24,
                 background: '#FF0033',
                 color: '#fff',
-                padding: '28px 56px',
+                padding: '32px 68px',
                 borderRadius: 999,
                 fontWeight: 800,
-                fontSize: 56,
+                fontSize: 64,
                 letterSpacing: '0.02em',
-                boxShadow: '0 14px 40px rgba(255,0,51,0.45)',
+                boxShadow: '0 16px 46px rgba(255,0,51,0.5)',
+                transform: `scale(${subPulse})`,
               }}
             >
               <span
@@ -339,17 +356,29 @@ export function ShortsScene({ manifest }: ShortsSceneProps) {
                   display: 'inline-flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  width: 64,
-                  height: 64,
+                  width: 72,
+                  height: 72,
                   borderRadius: '50%',
                   background: '#fff',
                   color: '#FF0033',
-                  fontSize: 40,
+                  fontSize: 44,
                 }}
               >
                 ▶
               </span>
               SUBSCRIBE
+            </div>
+            {/* Small tap hint reinforcing the single action. */}
+            <div
+              style={{
+                marginTop: 26,
+                color: 'rgba(255,255,255,0.82)',
+                fontWeight: 600,
+                fontSize: 28,
+                letterSpacing: '0.03em',
+              }}
+            >
+              tap to follow for more
             </div>
             <div
               style={{

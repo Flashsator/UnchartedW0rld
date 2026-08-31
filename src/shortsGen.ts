@@ -14,16 +14,19 @@ const MAX_SHORTS_SEC = 55;
 // noise and we fall back to the blind time-based cut instead of shipping a 6s clip.
 const MIN_ARC_SEC = 15;
 // End-card outro window (seconds) held AFTER the narration ends. The Short's
-// final frames show the "Watch the full video + SUBSCRIBE" card (ShortsScene,
-// gated on outroSec > 0) so the Short has a deliberate, finished ending instead
-// of a hard cut that loops mid-sentence. Any value > 0 also auto-disables the
-// loop-back hook re-fade — the end card owns the tail (see ShortsScene
-// `hasOutro`). User directive 2026-06-29: the seamless loop (OUTRO_SEC = 0) read
-// as "cut off / suddenly interrupted" even once the narration resolved its own
-// self-contained arc, so we trade the (never-data-proven) replay-loop benefit
-// for a complete-feeling ending plus an on-screen subscribe CTA. The funnel link
-// still also lives in the description's "▶ Full video:" line.
-const OUTRO_SEC = 2.5;
+// final frames show a SUBSCRIBE-first end card (ShortsScene, gated on
+// outroSec > 0) so the Short has a deliberate, finished ending instead of a hard
+// cut that loops mid-sentence. Any value > 0 also auto-disables the loop-back
+// hook re-fade — the end card owns the tail (see ShortsScene `hasOutro`). User
+// directive 2026-06-29: the seamless loop (OUTRO_SEC = 0) read as "cut off /
+// suddenly interrupted", so we trade the (never-data-proven) replay-loop benefit
+// for a complete ending plus an on-screen subscribe CTA. Raised 2.5 → 3.0 (subs
+// directive): subscriber conversion is the weak spot (~0.25% of Short views), and
+// the card is now a SUBSCRIBE-first CTA with the channel promise (ShortsScene
+// SUB_PROMISE) rather than a funnel-first card — the extra ~0.5s gives that one
+// action time to land. The funnel link still lives in the description's
+// "▶ Full video:" line, so nothing is lost there.
+const OUTRO_SEC = 3.0;
 
 // Same-day teaser short publishes a couple hours AFTER the long video (which
 // lands at PUBLISH_HOUR_UTC) so the two don't split the launch slot and the
