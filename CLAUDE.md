@@ -565,9 +565,15 @@ silently resets every run.
   footage — the split is the pure, unit-tested `shortsStillIntroCount` (intro
   seconds ÷ `SHORTS_CLIP_SEC`, always leaving ≥1 footage slot). The intent is to
   guarantee on-subject, species-accurate visuals through the swipe/early-retention
-  window, then hand off to motion. **Attribution-free
-  sources only** (CC0/Unsplash) because the Shorts fetch path threads no credit
-  channel (`fetchShortsBroll` passes `commonsCredits` undefined). Best-effort with
+  window, then hand off to motion. **Scoped to one series for a clean A/B**
+  (`SHORTS_STILL_INTRO_SERIES`, default `plants`, via the pure
+  `shortsStillIntroApplies`): only that series' Shorts get the still intro while
+  animals/insects stay all-footage as the control — currently enabled in
+  `daily.yml` (`ENABLE_SHORTS_STILL_INTRO: '1'`) for **plants only** (the weakest
+  performer, most room to test); an empty `SHORTS_STILL_INTRO_SERIES` means all
+  series. Compare views/retention in `shorts-hook-report` before widening.
+  **Attribution-free sources only** (CC0/Unsplash) because the Shorts fetch path
+  threads no credit channel (`fetchShortsBroll` passes `commonsCredits` undefined). Best-effort with
   two-way fallback: a still shortfall is covered by footage, and if nothing
   assembles it falls through to the plain footage path — so a bad run never
   under-fills a Short. Bumps the `shortsStillIntro` brollStats counter. This is an
@@ -703,9 +709,11 @@ silently resets every run.
   (NOT yet in `daily.yml` — measure `brollStats` first): `ENABLE_BROLL_AI_ART`
   (stylized AI illustration background for explainer cards, invariant #3; tune
   with `BROLL_AI_ART_MAX_PER_EPISODE`; see the card AI-illustration note above).
-  Also OFF everywhere: `ENABLE_SHORTS_STILL_INTRO` (brief ~15s species-still
-  carousel intro for Shorts, an A/B experiment; tune with `SHORTS_STILL_INTRO_SEC`;
-  see the Shorts still-intro note above).
+  One gate runs as a **scoped A/B** rather than fully off: `ENABLE_SHORTS_STILL_INTRO`
+  is `'1'` in `daily.yml` but limited by `SHORTS_STILL_INTRO_SERIES` (default
+  `plants`) to the plants series only (brief ~15s species-still carousel intro for
+  Shorts; tune length with `SHORTS_STILL_INTRO_SEC`; see the Shorts still-intro
+  note above).
 
 ## Conventions
 

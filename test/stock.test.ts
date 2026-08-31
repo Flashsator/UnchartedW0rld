@@ -24,8 +24,30 @@ import {
   licenseNeedsAttribution,
   parseINaturalistResults,
   shortsStillIntroCount,
+  shortsStillIntroApplies,
 } from '../src/stock.js';
 import type { BrollClip } from '../src/types.js';
+
+// --- shortsStillIntroApplies (series-scoped A/B gate) --------------------------
+
+test('shortsStillIntroApplies: off when the master gate is off', () => {
+  assert.equal(shortsStillIntroApplies(false, 'plants', ['plants']), false);
+});
+
+test('shortsStillIntroApplies: on only for an allow-listed series', () => {
+  assert.equal(shortsStillIntroApplies(true, 'plants', ['plants']), true);
+  assert.equal(shortsStillIntroApplies(true, 'animals', ['plants']), false);
+  assert.equal(shortsStillIntroApplies(true, 'PLANTS', ['plants']), true); // case-insensitive
+});
+
+test('shortsStillIntroApplies: empty allow-list means all series (when on)', () => {
+  assert.equal(shortsStillIntroApplies(true, 'insects', []), true);
+  assert.equal(shortsStillIntroApplies(true, undefined, []), true);
+});
+
+test('shortsStillIntroApplies: a restricted list needs a known series key', () => {
+  assert.equal(shortsStillIntroApplies(true, undefined, ['plants']), false);
+});
 
 // --- shortsStillIntroCount -----------------------------------------------------
 

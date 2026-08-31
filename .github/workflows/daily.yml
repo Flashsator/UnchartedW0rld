@@ -199,6 +199,12 @@ jobs:
           # (bounded, accept-last). The deterministic word-budget overflow check
           # runs always (no CLI); only the judge is gated. Best-effort/non-fatal.
           ENABLE_SHORTS_ARC_QA: '1'
+          # A/B experiment (plants series only, via SHORTS_STILL_INTRO_SERIES
+          # default): a Short's first ~15s is a species-accurate portrait still
+          # carousel, then real footage. Scoped to plants so animals/insects stay
+          # all-footage as the control; compare views/retention in shorts-hook-report
+          # before widening. Best-effort with footage fallback; long-form untouched.
+          ENABLE_SHORTS_STILL_INTRO: '1'
           SERIES_KEY: ${{ inputs.series_key }}
           SUB_THEME: ${{ inputs.sub_theme }}
           STRUCTURE_KEY: ${{ inputs.structure_key }}
