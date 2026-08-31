@@ -556,6 +556,24 @@ silently resets every run.
   floor (invariant #3 holds); the rare landscape-fallback path (<2 portrait clips
   found) inherits the faster cadence by center-cropping the relevant long-section
   clips, which stays on-subject. Don't relax the floor to chase the quota.
+- **Shorts still-intro experiment (`ENABLE_SHORTS_STILL_INTRO`, OFF by default):**
+  builds a Short's FRONT half from a carousel of species-accurate PORTRAIT stills
+  (`fetchShortsStillIntro` in `src/stock.ts`: iNaturalist CC0 / Commons CC0 /
+  Unsplash, multiple distinct stills, each Ken-Burns'd via the now
+  dimension-parametrized `makeKenBurnsClip` at 1080×1920) and keeps the BACK half
+  real footage — the split is the pure, unit-tested `shortsStillIntroCount`
+  (`SHORTS_STILL_INTRO_RATIO`, default 0.5; always leaves ≥1 footage slot). The
+  intent is to guarantee on-subject, species-accurate visuals through the
+  swipe/early-retention window, then hand off to motion. **Attribution-free
+  sources only** (CC0/Unsplash) because the Shorts fetch path threads no credit
+  channel (`fetchShortsBroll` passes `commonsCredits` undefined). Best-effort with
+  two-way fallback: a still shortfall is covered by footage, and if nothing
+  assembles it falls through to the plain footage path — so a bad run never
+  under-fills a Short. Bumps the `shortsStillIntro` brollStats counter. This is an
+  **EXPERIMENT to A/B, not a default**: stills can read as a slideshow, and the
+  analytics say visuals aren't the Shorts reach bottleneck (retention is already
+  ~57%) — so measure views/retention against footage Shorts before leaving it on.
+  Long-form untouched.
 - **Long-form rest beats + slower cadence (anti-fatigue):** the long-form picture
   used to move constantly (video + Ken Burns + grade + captions), which tires the
   eye. Two levers ease it, **long-form only** (Shorts keep their fast cadence):
@@ -684,6 +702,9 @@ silently resets every run.
   (NOT yet in `daily.yml` — measure `brollStats` first): `ENABLE_BROLL_AI_ART`
   (stylized AI illustration background for explainer cards, invariant #3; tune
   with `BROLL_AI_ART_MAX_PER_EPISODE`; see the card AI-illustration note above).
+  Also OFF everywhere: `ENABLE_SHORTS_STILL_INTRO` (front-half species-still
+  carousel for Shorts, an A/B experiment; tune with `SHORTS_STILL_INTRO_RATIO`;
+  see the Shorts still-intro note above).
 
 ## Conventions
 

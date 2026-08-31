@@ -23,8 +23,27 @@ import {
   iNatLicenseLabel,
   licenseNeedsAttribution,
   parseINaturalistResults,
+  shortsStillIntroCount,
 } from '../src/stock.js';
 import type { BrollClip } from '../src/types.js';
+
+// --- shortsStillIntroCount -----------------------------------------------------
+
+test('shortsStillIntroCount splits ~half to stills, always leaving footage', () => {
+  assert.equal(shortsStillIntroCount(8, 0.5), 4);
+  assert.equal(shortsStillIntroCount(10, 0.5), 5);
+  assert.equal(shortsStillIntroCount(2, 0.5), 1);
+});
+
+test('shortsStillIntroCount never takes every slot and never zero-below-2', () => {
+  assert.equal(shortsStillIntroCount(1, 0.5), 0); // too few slots to split
+  assert.equal(shortsStillIntroCount(10, 2), 9); // ratio clamps; back half keeps >=1
+  assert.equal(shortsStillIntroCount(6, 0), 1); // floor of 1 still when enabled
+});
+
+test('shortsStillIntroCount tolerates a NaN ratio (defaults to half)', () => {
+  assert.equal(shortsStillIntroCount(8, Number.NaN), 4);
+});
 
 // --- iNaturalist parsing -------------------------------------------------------
 
