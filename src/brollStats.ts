@@ -24,6 +24,7 @@ export type BrollStatKey =
   | 'heroSegment' // an extra slot was realized as a time-window cut of the beat's hero clip
   | 'heroSegmentDropped' // a hero segment couldn't be cut, so the slot was dropped (not repeated)
   | 'sectionBackfill' // a whole section came up empty and borrowed on-subject clips from others
+  | 'shortsStillIntro' // a Short front-half slot was filled by a species-accurate still carousel
   | 'cardFired' // an off-subject slot was replaced by a self-built explainer card
   | 'cardIllustration' // an explainer card got a vision-QA'd AI illustration background
   | 'restStill'; // a slot was rendered as a near-motionless rest-beat still
@@ -36,6 +37,7 @@ export const BROLL_STAT_KEYS: BrollStatKey[] = [
   'heroSegment',
   'heroSegmentDropped',
   'sectionBackfill',
+  'shortsStillIntro',
   'cardFired',
   'cardIllustration',
   'restStill',
@@ -50,6 +52,7 @@ const STAT_LABELS: Record<BrollStatKey, string> = {
   heroSegment: 'hero-seg',
   heroSegmentDropped: 'hero-seg-dropped',
   sectionBackfill: 'section-backfill',
+  shortsStillIntro: 'shorts-still-intro',
   cardFired: 'cards',
   cardIllustration: 'card-art',
   restStill: 'rest-stills',
@@ -66,6 +69,7 @@ export function emptyBrollStats(): BrollStats {
     heroSegment: 0,
     heroSegmentDropped: 0,
     sectionBackfill: 0,
+    shortsStillIntro: 0,
     cardFired: 0,
     cardIllustration: 0,
     restStill: 0,

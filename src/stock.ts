@@ -7,9 +7,11 @@ import {
   BROLL_VISION_QA_MAX_CHECKS,
   COVERR_API_KEY,
   ENABLE_BROLL_VISION_QA,
+  ENABLE_SHORTS_STILL_INTRO,
   PEXELS_API_KEY,
   PIXABAY_API_KEY,
   SHORTS_CLIP_SEC,
+  SHORTS_STILL_INTRO_SEC,
   UNSPLASH_ACCESS_KEY,
   VIDEO_FPS,
   VIDEO_H,
@@ -758,18 +760,30 @@ async function makeKenBurnsClip(
   query: string,
   cacheDir: string,
   idx: number,
+  // Output dimensions. Defaults to the landscape long-form frame; the Shorts
+  // still path passes portrait 1080x1920 so a still fills the vertical frame
+  // (a landscape source is cover-cropped to portrait) instead of being letterboxed.
+  dims: { w: number; h: number } = { w: VIDEO_W, h: VIDEO_H },
 ): Promise<BrollClip | null> {
   const stamp = Date.now();
   const imgPath = path.join(cacheDir, safeFilename(`kb_${query}_${idx}_${stamp}.jpg`));
   const dest = path.join(cacheDir, safeFilename(`kb_${query}_${idx}_${stamp}.mp4`));
   const frames = Math.round(BROLL_CLIP_SEC * VIDEO_FPS);
+  const { w: outW, h: outH } = dims;
   try {
     await downloadFile(photoUrl, imgPath);
+    // Cover-fit the source to a 3x-target canvas of the OUTPUT aspect ratio, then
+    // zoompan down to the output size — robust for any source aspect (a landscape
+    // photo becomes a centered portrait crop, never a letterbox). The old
+    // landscape formula (scale=4000:-1) is equivalent here for 16:9 output.
+    const canvasW = outW * 3;
+    const canvasH = outH * 3;
     const vf =
-      `scale=4000:-1:flags=lanczos,` +
+      `scale=${canvasW}:${canvasH}:force_original_aspect_ratio=increase:flags=lanczos,` +
+      `crop=${canvasW}:${canvasH},` +
       `zoompan=z='min(zoom+0.0011,1.16)':d=${frames}` +
       `:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'` +
-      `:s=${VIDEO_W}x${VIDEO_H}:fps=${VIDEO_FPS},` +
+      `:s=${outW}x${outH}:fps=${VIDEO_FPS},` +
       `format=yuv420p`;
     await run('ffmpeg', [
       '-y', '-loglevel', 'error',
@@ -788,7 +802,7 @@ async function makeKenBurnsClip(
     }
     // Commons/Unsplash stills are fetched by title/keyword match to the actual
     // subject, so they are on-subject by construction — never a card candidate.
-    return { path: dest, duration: dur, width: VIDEO_W, height: VIDEO_H, onSubject: true };
+    return { path: dest, duration: dur, width: outW, height: outH, onSubject: true };
   } catch (e) {
     log(`Ken Burns clip failed: ${(e as Error).message}`);
     return null;
@@ -1408,6 +1422,67 @@ export function backfillSectionClips(pool: readonly BrollClip[], needed: number)
 // clips and reuses distinct segments of its first clip for the rest
 // (assembleHeroReuseShots), so a Short never flashes a different individual every
 // cut. Cuts faster than the long-form via the tighter SHORTS_CLIP_SEC quota.
+// How many of a Short's `needed` shot slots the still carousel takes: enough to
+// cover roughly the first `introSec` seconds (a brief intro, NOT the whole
+// Short), converted against the per-shot seconds `clipSec`. Always at least 1 and
+// never all of them (the rest stays footage), and never more slots than exist.
+// Pure/exported for testing.
+export function shortsStillIntroCount(needed: number, introSec: number, clipSec: number): number {
+  if (needed <= 1) return 0;
+  const per = Number.isFinite(clipSec) && clipSec > 0 ? clipSec : SHORTS_CLIP_SEC;
+  const sec = Number.isFinite(introSec) && introSec > 0 ? introSec : 15;
+  const slots = Math.round(sec / per);
+  return Math.min(needed - 1, Math.max(1, slots));
+}
+
+// Front-half still carousel for a Short: up to `count` DISTINCT portrait Ken
+// Burns stills of the subject, drawn from attribution-free sources only
+// (iNaturalist CC0 / Commons CC0 / Unsplash) because the Shorts path carries no
+// credit channel. Multiple stills → the front is a varied carousel, not one held
+// image. Best-effort: returns however many it could build (maybe zero), and the
+// caller backfills the shortfall with footage.
+async function fetchShortsStillIntro(
+  subject: string,
+  count: number,
+  cacheDir: string,
+  usedUrls: Set<string>,
+): Promise<BrollClip[]> {
+  const out: BrollClip[] = [];
+  const subj = subject.trim();
+  if (count <= 0 || !subj) return out;
+  const urls: string[] = [];
+  try {
+    // CC0-only from the licensed sources (attribution-free — no Shorts credit line).
+    const inat = (await searchINaturalist(subj)).filter((c) => !licenseNeedsAttribution(c.credit.license));
+    urls.push(...inat.map((c) => c.url));
+  } catch {
+    // best-effort
+  }
+  try {
+    const commons = (await searchCommons(subj)).filter((c) => !licenseNeedsAttribution(c.credit.license));
+    urls.push(...commons.map((c) => c.url));
+  } catch {
+    // best-effort
+  }
+  if (UNSPLASH_ACCESS_KEY) {
+    try {
+      urls.push(...(await searchUnsplash(subj)));
+    } catch {
+      // best-effort
+    }
+  }
+  for (const url of shuffle(urls)) {
+    if (out.length >= count) break;
+    if (usedUrls.has(url)) continue;
+    const clip = await makeKenBurnsClip(url, subj, cacheDir, brollSeq++, { w: 1080, h: 1920 });
+    if (!clip) continue;
+    usedUrls.add(url);
+    out.push(clip);
+    bumpBrollStat('shortsStillIntro');
+  }
+  return out;
+}
+
 export async function fetchShortsBroll(
   beats: string[],
   narrationSec: number,
@@ -1428,6 +1503,24 @@ export async function fetchShortsBroll(
   // long-form fetch (see pipeline.ts), so both surfaces judge relevance the same.
   const opts: BrollFetchOpts = { orientation: 'portrait', pixabayCategory, subject };
   const needed = Math.max(1, Math.ceil(narrationSec / SHORTS_CLIP_SEC));
+
+  // EXPERIMENT (ENABLE_SHORTS_STILL_INTRO, OFF by default): a brief ~intro of a
+  // species-accurate still carousel, then real footage for the rest. Guarantees
+  // on-subject visuals through the swipe/early-retention window, then hands off to
+  // motion. Best-effort with two-way fallback: a still shortfall is covered by
+  // footage, and if nothing assembles we fall through to the plain footage path.
+  if (ENABLE_SHORTS_STILL_INTRO && subject?.trim()) {
+    const frontCount = shortsStillIntroCount(needed, SHORTS_STILL_INTRO_SEC, SHORTS_CLIP_SEC);
+    const stills = await fetchShortsStillIntro(subject, frontCount, cacheDir, usedUrls);
+    const backNeeded = Math.max(1, needed - stills.length);
+    const footage = await assembleHeroReuseShots(
+      queries, backNeeded, SHORTS_CLIP_SEC, cacheDir, usedUrls, undefined, undefined, opts,
+    );
+    const shots = [...stills, ...footage];
+    if (shots.length > 0) return shots;
+    // both empty → fall through to the plain path below
+  }
+
   return assembleHeroReuseShots(
     queries,
     needed,
